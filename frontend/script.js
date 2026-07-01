@@ -4,7 +4,7 @@ const CELL_SIZE = 36;
 const PADDING = 30;
 
 // 【重要】改成你的 Railway 后端域名（不要带末尾斜杠）
-const API_URL = 'chees-backend.up.railway.app';
+const API_URL = 'https://chees-backend.up.railway.app/health';
 
 // ==================== DOM 引用 ====================
 const canvas = document.getElementById('boardCanvas');
