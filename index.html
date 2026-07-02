@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>五子棋 - Gomoku</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 左侧面板 -->
+        <div class="left-panel">
+            <div class="game-logo">
+                <h1>五子棋</h1>
+                <p class="subtitle">Gomoku</p>
+            </div>
+
+            <!-- 当前回合 -->
+            <div class="turn-card">
+                <div id="turn-indicator" class="turn-display black-turn">
+                    <div class="piece-preview"></div>
+                    <div class="turn-info">
+                        <span class="turn-label">当前回合</span>
+                        <span id="current-player-text" class="turn-text">黑棋走子</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 游戏信息 -->
+            <div class="info-card">
+                <div class="stat-item">
+                    <span class="stat-label">步数</span>
+                    <span id="move-count" class="stat-value">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">用时</span>
+                    <span id="game-time" class="stat-value">00:00</span>
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="action-card">
+                <button id="undo-btn" class="game-btn undo-btn">
+                    <span class="btn-icon">↩️</span>
+                    <span>悔棋</span>
+                </button>
+                <button id="restart-btn" class="game-btn restart-btn">
+                    <span class="btn-icon">🔄</span>
+                    <span>新游戏</span>
+                </button>
+            </div>
+
+            <!-- 状态显示 -->
+            <div id="game-status" class="status-display">
+                🎯 游戏进行中
+            </div>
+        </div>
+
+        <!-- 中间棋盘 -->
+        <div class="board-panel">
+            <div class="board-wrapper">
+                <canvas id="board" width="640" height="640"></canvas>
+            </div>
+        </div>
+
+        <!-- 右侧面板 -->
+        <div class="right-panel">
+            <!-- 黑棋信息 -->
+            <div id="black-player-card" class="player-card black-card active-player">
+                <div class="player-header">
+                    <div class="player-piece black-piece"></div>
+                    <h3>黑棋</h3>
+                </div>
+                <div class="player-stats">
+                    <span class="player-name">玩家 1</span>
+                </div>
+            </div>
+
+            <!-- 白棋信息 -->
+            <div id="white-player-card" class="player-card white-card">
+                <div class="player-header">
+                    <div class="player-piece white-piece"></div>
+                    <h3>白棋</h3>
+                </div>
+                <div class="player-stats">
+                    <span class="player-name">玩家 2</span>
+                </div>
+            </div>
+
+            <!-- 快捷键提示 -->
+            <div class="shortcuts-card">
+                <h4>快捷键</h4>
+                <div class="shortcut-item">
+                    <kbd>Ctrl</kbd> + <kbd>Z</kbd>
+                    <span>悔棋</span>
+                </div>
+                <div class="shortcut-item">
+                    <kbd>Ctrl</kbd> + <kbd>R</kbd>
+                    <span>新游戏</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 胜利弹窗 -->
+    <div id="win-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-dialog">
+            <div class="modal-icon">🎉</div>
+            <h2 class="modal-title">游戏结束</h2>
+            <div id="winner-display" class="winner-show"></div>
+            <p id="win-description" class="modal-desc"></p>
+            <button id="modal-restart-btn" class="game-btn restart-btn">
+                🔄 再来一局
+            </button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
