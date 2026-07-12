@@ -112,13 +112,11 @@ async function syncLoop() {
     try {
         const data = await api(`/api/rooms/${currentRoom.room_code}`);
         
-        // 更新玩家名
         if (data.black_player) blackNameEl.textContent = data.black_player;
         else blackNameEl.textContent = '等待中';
         if (data.white_player) whiteNameEl.textContent = data.white_player;
         else whiteNameEl.textContent = '等待中';
         
-        // 房主检测对手加入（waiting -> playing）
         if (data.status === 'playing' && currentRoom.status === 'waiting') {
             currentRoom.status = 'playing';
             currentRoom.black_player = data.black_player;
@@ -131,25 +129,21 @@ async function syncLoop() {
             const serverBoard = JSON.stringify(data.board_state);
             const localBoard = JSON.stringify(game.pieces);
             
-            // 棋盘变了，同步
             if (serverBoard !== localBoard) {
                 game.syncFromServer(data);
             }
             
-            // 检测到重新开始（棋盘清空但我还有棋子）
             const mhLen = (data.move_history || []).length;
             if (data.status === 'playing' && mhLen === 0 && game.moveCount > 0) {
                 game.reset(currentRoom);
                 game.onGameStart();
             }
             
-            // 游戏结束
             if (data.status === 'finished') {
                 game.onGameEnd(data);
             }
         }
         
-        // 游戏结束后对方重新开始了
         if (data.status === 'playing' && game && game.gameOver) {
             game.reset(currentRoom);
             game.onGameStart();
@@ -157,7 +151,6 @@ async function syncLoop() {
         
         currentRoom.status = data.status;
     } catch (err) {
-        // 房间可能被删除了
         if (err.message === '房间不存在') {
             stopSync();
             alert('房间已解散');
