@@ -3,19 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>五子棋 - Gomoku</title>
+    <title>五子棋 - 在线对战</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <!-- 左侧面板 -->
+    <!-- 登录/注册弹窗 -->
+    <div id="auth-modal" class="modal-overlay">
+        <div class="modal-dialog auth-dialog">
+            <h2 id="auth-title">登录</h2>
+            <div class="auth-form">
+                <input id="auth-username" type="text" placeholder="用户名" class="auth-input">
+                <input id="auth-password" type="password" placeholder="密码" class="auth-input">
+                <button id="auth-submit-btn" class="game-btn restart-btn">登录</button>
+                <p class="auth-switch">
+                    <span id="auth-switch-text">没有账号？</span>
+                    <a id="auth-switch-link" href="#">注册</a>
+                </p>
+                <p id="auth-error" class="auth-error"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 大厅界面 -->
+    <div id="lobby" class="container">
+        <div class="lobby-panel">
+            <div class="game-logo">
+                <h1>五子棋</h1>
+                <p class="subtitle">Gomoku Online</p>
+            </div>
+            
+            <div id="user-info" class="user-card">
+                <span id="display-username">未登录</span>
+                <button id="logout-btn" class="game-btn undo-btn" style="display:none;">退出</button>
+            </div>
+            
+            <div class="lobby-actions">
+                <button id="create-room-btn" class="game-btn restart-btn">创建房间</button>
+                <div class="join-room-area">
+                    <input id="join-room-input" type="text" placeholder="输入房间号" class="auth-input" maxlength="6">
+                    <button id="join-room-btn" class="game-btn undo-btn">加入房间</button>
+                </div>
+                <p id="lobby-error" class="auth-error"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 游戏界面（隐藏） -->
+    <div id="game-room" class="container" style="display: none;">
         <div class="left-panel">
             <div class="game-logo">
                 <h1>五子棋</h1>
-                <p class="subtitle">Gomoku</p>
+                <p id="room-code-display" class="subtitle"></p>
             </div>
 
-            <!-- 当前回合 -->
             <div class="turn-card">
                 <div id="turn-indicator" class="turn-display black-turn">
                     <div class="piece-preview"></div>
@@ -26,7 +66,6 @@
                 </div>
             </div>
 
-            <!-- 游戏信息 -->
             <div class="info-card">
                 <div class="stat-item">
                     <span class="stat-label">步数</span>
@@ -38,66 +77,51 @@
                 </div>
             </div>
 
-            <!-- 操作按钮 -->
             <div class="action-card">
                 <button id="undo-btn" class="game-btn undo-btn">
-                    <span class="btn-icon">↩️</span>
-                    <span>悔棋</span>
+                    <span>↩️ 悔棋</span>
                 </button>
                 <button id="restart-btn" class="game-btn restart-btn">
-                    <span class="btn-icon">🔄</span>
-                    <span>新游戏</span>
+                    <span>🔄 新游戏</span>
+                </button>
+                <button id="leave-room-btn" class="game-btn undo-btn" style="background:#e53e3e;">
+                    <span>🚪 离开房间</span>
                 </button>
             </div>
 
-            <!-- 状态显示 -->
-            <div id="game-status" class="status-display">
-                🎯 游戏进行中
-            </div>
+            <div id="game-status" class="status-display">🎯 游戏进行中</div>
         </div>
 
-        <!-- 中间棋盘 -->
         <div class="board-panel">
             <div class="board-wrapper">
-                <canvas id="board" width="640" height="640"></canvas>
+                <canvas id="board" width="560" height="560"></canvas>
             </div>
         </div>
 
-        <!-- 右侧面板 -->
         <div class="right-panel">
-            <!-- 黑棋信息 -->
             <div id="black-player-card" class="player-card black-card active-player">
                 <div class="player-header">
                     <div class="player-piece black-piece"></div>
                     <h3>黑棋</h3>
                 </div>
                 <div class="player-stats">
-                    <span class="player-name">玩家 1</span>
+                    <span id="black-name" class="player-name">等待中</span>
                 </div>
             </div>
 
-            <!-- 白棋信息 -->
             <div id="white-player-card" class="player-card white-card">
                 <div class="player-header">
                     <div class="player-piece white-piece"></div>
                     <h3>白棋</h3>
                 </div>
                 <div class="player-stats">
-                    <span class="player-name">玩家 2</span>
+                    <span id="white-name" class="player-name">等待中</span>
                 </div>
             </div>
 
-            <!-- 快捷键提示 -->
             <div class="shortcuts-card">
-                <h4>快捷键</h4>
-                <div class="shortcut-item">
-                    <kbd>Ctrl</kbd> + <kbd>Z</kbd>
-                    <span>悔棋</span>
-                </div>
-                <div class="shortcut-item">
-                    <kbd>Ctrl</kbd> + <kbd>R</kbd>
-                    <span>新游戏</span>
-                </div>
+                <h4>操作提示</h4>
+                <p id="game-hint" class="hint-text">等待对手加入...</p>
             </div>
         </div>
     </div>
@@ -109,9 +133,7 @@
             <h2 class="modal-title">游戏结束</h2>
             <div id="winner-display" class="winner-show"></div>
             <p id="win-description" class="modal-desc"></p>
-            <button id="modal-restart-btn" class="game-btn restart-btn">
-                🔄 再来一局
-            </button>
+            <button id="modal-restart-btn" class="game-btn restart-btn">🔄 再来一局</button>
         </div>
     </div>
 
