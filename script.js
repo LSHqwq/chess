@@ -94,22 +94,13 @@ function showLobby() {
 async function loadRoomList() {
     try {
         const rooms = await api('/api/rooms');
-        if (rooms.length === 0) {
-            roomList.innerHTML = '<p class="room-empty">暂无可用房间</p>';
-            return;
-        }
+        if (rooms.length === 0) { roomList.innerHTML = '<p class="room-empty">暂无可用房间</p>'; return; }
         roomList.innerHTML = rooms.map(room => `
             <div class="room-item" onclick="quickJoin('${room.room_code}')">
-                <div class="room-item-info">
-                    <span class="room-item-code">${room.room_code}</span>
-                    <span class="room-item-host">👤 ${room.host_name}</span>
-                </div>
+                <div class="room-item-info"><span class="room-item-code">${room.room_code}</span><span class="room-item-host">👤 ${room.host_name}</span></div>
                 <span class="room-item-join">加入 →</span>
-            </div>
-        `).join('');
-    } catch (err) {
-        roomList.innerHTML = '<p class="room-empty">加载失败</p>';
-    }
+            </div>`).join('');
+    } catch (err) { roomList.innerHTML = '<p class="room-empty">加载失败</p>'; }
 }
 
 async function quickJoin(code) {
@@ -118,32 +109,23 @@ async function quickJoin(code) {
         const data = await api(`/api/rooms/${code}/join`, 'POST');
         currentRoom = { room_code: data.room_code, status: 'playing', black_player: data.black_player, white_player: data.white_player };
         showGameRoom();
-        game.isAI = false;
-        game.myColor = 'white'; game.onGameStart(); startSync();
-    } catch (err) {
-        lobbyError.textContent = err.message;
-        loadRoomList();
-    }
+        game.isAI = false; game.myColor = 'white'; game.onGameStart(); startSync();
+    } catch (err) { lobbyError.textContent = err.message; loadRoomList(); }
 }
 
 refreshRoomsBtn.addEventListener('click', loadRoomList);
 
-// 人机对战
 aiPlayBtn.addEventListener('click', () => {
     currentRoom = { room_code: 'AI', status: 'playing', black_player: currentUser.username, white_player: '电脑' };
     showGameRoom();
-    game.isAI = true;
-    game.myColor = 'black';
-    game.onGameStart();
+    game.isAI = true; game.myColor = 'black'; game.onGameStart();
 });
 
 createRoomBtn.addEventListener('click', async () => {
     try {
         const data = await api('/api/rooms', 'POST');
         currentRoom = { room_code: data.room_code, status: 'waiting', black_player: currentUser.username, white_player: null };
-        showGameRoom();
-        game.isAI = false;
-        startSync();
+        showGameRoom(); game.isAI = false; startSync();
     } catch (err) { lobbyError.textContent = err.message; }
 });
 
@@ -154,8 +136,7 @@ joinRoomBtn.addEventListener('click', async () => {
         const data = await api(`/api/rooms/${code}/join`, 'POST');
         currentRoom = { room_code: data.room_code, status: 'playing', black_player: data.black_player, white_player: data.white_player };
         showGameRoom();
-        game.isAI = false;
-        game.myColor = 'white'; game.onGameStart(); startSync();
+        game.isAI = false; game.myColor = 'white'; game.onGameStart(); startSync();
     } catch (err) { lobbyError.textContent = err.message; }
 });
 
@@ -169,54 +150,19 @@ async function syncLoop() {
     if (!currentRoom || !currentRoom.room_code || currentRoom.room_code === 'AI') { syncTimer = setTimeout(syncLoop, 2000); return; }
     try {
         const data = await api(`/api/rooms/${currentRoom.room_code}`);
-        
-        if (data.black_player) blackNameEl.textContent = data.black_player;
-        else blackNameEl.textContent = '等待中';
-        if (data.white_player) whiteNameEl.textContent = data.white_player;
-        else whiteNameEl.textContent = '等待中';
-        
-        if (data.status === 'playing' && currentRoom.status === 'waiting') {
-            currentRoom.status = 'playing';
-            currentRoom.black_player = data.black_player;
-            currentRoom.white_player = data.white_player;
-            game.myColor = 'black';
-            game.onGameStart();
-        }
-        
+        if (data.black_player) blackNameEl.textContent = data.black_player; else blackNameEl.textContent = '等待中';
+        if (data.white_player) whiteNameEl.textContent = data.white_player; else whiteNameEl.textContent = '等待中';
+        if (data.status === 'playing' && currentRoom.status === 'waiting') { currentRoom.status = 'playing'; currentRoom.black_player = data.black_player; currentRoom.white_player = data.white_player; game.myColor = 'black'; game.onGameStart(); }
         if (game && !game.gameOver) {
-            const serverBoard = JSON.stringify(data.board_state);
-            const localBoard = JSON.stringify(game.pieces);
-            
-            if (serverBoard !== localBoard) {
-                game.syncFromServer(data);
-            }
-            
+            if (JSON.stringify(data.board_state) !== JSON.stringify(game.pieces)) game.syncFromServer(data);
             const mhLen = (data.move_history || []).length;
-            if (data.status === 'playing' && mhLen === 0 && game.moveCount > 0) {
-                game.reset(currentRoom);
-                game.onGameStart();
-            }
-            
-            if (data.status === 'finished') {
-                game.onGameEnd(data);
-            }
+            if (data.status === 'playing' && mhLen === 0 && game.moveCount > 0) { game.reset(currentRoom); game.onGameStart(); }
+            if (data.status === 'finished') game.onGameEnd(data);
         }
-        
-        if (data.status === 'playing' && game && game.gameOver) {
-            game.reset(currentRoom);
-            game.onGameStart();
-        }
-        
+        if (data.status === 'playing' && game && game.gameOver) { game.reset(currentRoom); game.onGameStart(); }
         currentRoom.status = data.status;
     } catch (err) {
-        if (err.message === '房间不存在') {
-            stopSync();
-            alert('房间已解散');
-            currentRoom = null;
-            if (game) { game.isAI = false; game.cleanup(); }
-            showLobby();
-            return;
-        }
+        if (err.message === '房间不存在') { stopSync(); alert('房间已解散'); currentRoom = null; if (game) { game.isAI = false; game.cleanup(); } showLobby(); return; }
     }
     syncTimer = setTimeout(syncLoop, 1000);
 }
@@ -224,54 +170,30 @@ async function syncLoop() {
 // ========== 游戏界面 ==========
 function showGameRoom() {
     lobby.style.display = 'none'; gameRoomEl.style.display = 'flex';
-    if (currentRoom.room_code === 'AI') {
-        roomCodeDisplay.textContent = '🤖 人机对战';
-    } else {
-        roomCodeDisplay.textContent = '房间: ' + currentRoom.room_code;
-    }
-    blackNameEl.textContent = currentRoom.black_player || '等待中';
-    whiteNameEl.textContent = currentRoom.white_player || '等待中';
+    roomCodeDisplay.textContent = currentRoom.room_code === 'AI' ? '🤖 人机对战' : '房间: ' + currentRoom.room_code;
+    blackNameEl.textContent = currentRoom.black_player || '等待中'; whiteNameEl.textContent = currentRoom.white_player || '等待中';
     if (!game) game = new GomokuOnline();
     game.reset(currentRoom);
 }
 
 leaveRoomBtn.addEventListener('click', async () => {
-    if (currentRoom && !game.isAI) {
-        try { await api(`/api/rooms/${currentRoom.room_code}/leave`, 'POST'); } catch (err) {}
-    }
-    stopSync();
-    currentRoom = null;
+    if (currentRoom && !game.isAI) { try { await api(`/api/rooms/${currentRoom.room_code}/leave`, 'POST'); } catch (err) {} }
+    stopSync(); currentRoom = null;
     if (game) { game.isAI = false; game.cleanup(); }
     showLobby();
 });
 
 restartBtn.addEventListener('click', async () => {
     if (!currentRoom || game.gameStarted === false) return;
-    if (game.isAI) {
-        game.reset(currentRoom);
-        game.onGameStart();
-        return;
-    }
-    try {
-        await api(`/api/rooms/${currentRoom.room_code}/restart`, 'POST');
-        game.reset(currentRoom);
-        game.onGameStart();
-    } catch (err) {}
+    if (game.isAI) { game.reset(currentRoom); game.onGameStart(); return; }
+    try { await api(`/api/rooms/${currentRoom.room_code}/restart`, 'POST'); game.reset(currentRoom); game.onGameStart(); } catch (err) {}
 });
 
 modalRestartBtn.addEventListener('click', async () => {
     winModal.style.display = 'none';
     if (!currentRoom) return;
-    if (game.isAI) {
-        game.reset(currentRoom);
-        game.onGameStart();
-        return;
-    }
-    try {
-        await api(`/api/rooms/${currentRoom.room_code}/restart`, 'POST');
-        game.reset(currentRoom);
-        game.onGameStart();
-    } catch (err) {}
+    if (game.isAI) { game.reset(currentRoom); game.onGameStart(); return; }
+    try { await api(`/api/rooms/${currentRoom.room_code}/restart`, 'POST'); game.reset(currentRoom); game.onGameStart(); } catch (err) {}
 });
 
 // ========== 游戏类 ==========
@@ -281,103 +203,71 @@ class GomokuOnline {
         this.pieces = Array(15).fill(null).map(() => Array(15).fill(null));
         this.currentTurn = 'black'; this.gameOver = false; this.moveCount = 0;
         this.gameStarted = false; this.gameStartTime = null; this.timerInterval = null;
-        this.myColor = null;
-        this.lastMove = null;
-        this.isAI = false;
+        this.myColor = null; this.lastMove = null; this.isAI = false;
         this.canvas = document.getElementById('board');
         this.ctx = this.canvas.getContext('2d');
         this.bindEvents(); this.drawBoard();
     }
-    
+
     reset(roomData) {
         this.stopTimer();
         this.pieces = Array(15).fill(null).map(() => Array(15).fill(null));
         this.currentTurn = 'black'; this.gameOver = false; this.moveCount = 0;
-        this.gameStarted = false; this.gameStartTime = null;
-        this.lastMove = null;
+        this.gameStarted = false; this.gameStartTime = null; this.lastMove = null;
         gameTimeEl.textContent = '00:00'; moveCountEl.textContent = '0';
         gameStatusDiv.textContent = ''; gameStatusDiv.className = 'status-display';
         gameHint.textContent = ''; winModal.style.display = 'none';
-        turnIndicator.className = 'turn-display black-turn';
-        currentPlayerText.textContent = '黑棋走子';
+        turnIndicator.className = 'turn-display black-turn'; currentPlayerText.textContent = '黑棋走子';
         blackCard.classList.add('active-player'); whiteCard.classList.remove('active-player');
-        if (roomData && roomData.status === 'waiting') {
-            gameHint.textContent = '等待对手加入...';
-            gameStatusDiv.textContent = '⏳ 等待中';
-        }
+        if (roomData && roomData.status === 'waiting') { gameHint.textContent = '等待对手加入...'; gameStatusDiv.textContent = '⏳ 等待中'; }
         this.drawBoard();
     }
-    
+
     onGameStart() {
         if (this.gameStarted) return;
-        this.gameStarted = true;
-        this.gameStartTime = Date.now();
-        this.startTimer();
-        gameStatusDiv.textContent = '🎯 游戏进行中';
-        gameStatusDiv.className = 'status-display';
-        if (this.myColor === 'black') {
-            gameHint.textContent = '你执黑，请落子';
-        } else {
-            gameHint.textContent = '你执白，等待黑棋落子';
-        }
+        this.gameStarted = true; this.gameStartTime = Date.now(); this.startTimer();
+        gameStatusDiv.textContent = '🎯 游戏进行中'; gameStatusDiv.className = 'status-display';
+        gameHint.textContent = this.myColor === 'black' ? '你执黑，请落子' : '你执白，等待黑棋落子';
     }
-    
+
     onGameEnd(data) {
-        this.gameOver = true;
-        this.stopTimer();
-        gameStatusDiv.textContent = '🏆 游戏结束';
-        gameStatusDiv.className = 'status-display win';
+        this.gameOver = true; this.stopTimer();
+        gameStatusDiv.textContent = '🏆 游戏结束'; gameStatusDiv.className = 'status-display win';
         gameHint.textContent = '游戏结束';
-        const winnerName = data.winner || '';
-        const isMe = currentUser && winnerName === currentUser.username;
-        if (isMe) {
-            winnerDisplay.textContent = '🎉 你赢了！';
-        } else if (winnerName) {
-            winnerDisplay.textContent = '很遗憾，你输了，' + winnerName + ' 获胜';
-        } else {
-            winnerDisplay.textContent = '游戏结束';
-        }
+        const wn = data.winner || '';
+        const isMe = currentUser && wn === currentUser.username;
+        winnerDisplay.textContent = isMe ? '🎉 你赢了！' : (wn ? '很遗憾，你输了，' + wn + ' 获胜' : '游戏结束');
         winDescription.textContent = '经过 ' + this.moveCount + ' 步';
-        winModal.style.display = 'flex';
-        this.drawBoard();
+        winModal.style.display = 'flex'; this.drawBoard();
     }
-    
+
     syncFromServer(data) {
         if (this.isAI) return;
         this.pieces = JSON.parse(JSON.stringify(data.board_state));
         this.currentTurn = data.current_turn;
         this.moveCount = (data.move_history || []).length;
         moveCountEl.textContent = this.moveCount;
-        
         const history = data.move_history || [];
-        if (history.length > 0) {
-            const last = history[history.length - 1];
-            this.lastMove = { x: last.x, y: last.y };
-        }
-        
+        if (history.length > 0) { const last = history[history.length - 1]; this.lastMove = { x: last.x, y: last.y }; }
         this.updateTurnUI();
-        if (data.status === 'finished') {
-            this.gameOver = true;
-            this.stopTimer();
-        } else {
-            gameHint.textContent = this.myColor === this.currentTurn ? '轮到你了！' : '等待对手落子...';
-        }
+        if (data.status === 'finished') { this.gameOver = true; this.stopTimer(); }
+        else gameHint.textContent = this.myColor === this.currentTurn ? '轮到你了！' : '等待对手落子...';
         this.drawBoard();
     }
-    
+
     updateTurnUI() {
         turnIndicator.className = 'turn-display ' + (this.currentTurn === 'black' ? 'black-turn' : 'white-turn');
         currentPlayerText.textContent = this.currentTurn === 'black' ? '黑棋走子' : '白棋走子';
         blackCard.classList.toggle('active-player', this.currentTurn === 'black');
         whiteCard.classList.toggle('active-player', this.currentTurn === 'white');
     }
-    
+
     bindEvents() {
         this.canvas.addEventListener('click', (e) => this.handleClick(e));
         this.canvas.addEventListener('mousemove', (e) => this.handleHover(e));
         this.canvas.addEventListener('mouseleave', () => this.drawBoard());
     }
-    
+
     startTimer() {
         this.stopTimer();
         this.timerInterval = setInterval(() => {
@@ -387,9 +277,9 @@ class GomokuOnline {
             }
         }, 1000);
     }
-    
+
     stopTimer() { if (this.timerInterval) { clearInterval(this.timerInterval); this.timerInterval = null; } }
-    
+
     drawBoard(hx = -1, hy = -1) {
         const ctx = this.ctx, pad = this.padding, cell = this.cellSize, size = this.boardSize;
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -407,25 +297,16 @@ class GomokuOnline {
             ctx.beginPath(); ctx.arc(pad + x * cell, pad + y * cell, 4, 0, Math.PI*2); ctx.fillStyle = '#3a2a0a'; ctx.fill();
         });
         this.pieces.forEach((row, y) => row.forEach((p, x) => { if (p) this.drawPiece(x, y, p, false); }));
-        
-        // 最后落子红点
         if (this.lastMove) {
-            const lx = pad + this.lastMove.x * cell;
-            const ly = pad + this.lastMove.y * cell;
-            ctx.beginPath();
-            ctx.arc(lx, ly, 5, 0, Math.PI * 2);
-            ctx.fillStyle = '#e53e3e';
-            ctx.fill();
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 1;
-            ctx.stroke();
+            const lx = pad + this.lastMove.x * cell, ly = pad + this.lastMove.y * cell;
+            ctx.beginPath(); ctx.arc(lx, ly, 5, 0, Math.PI * 2); ctx.fillStyle = '#e53e3e'; ctx.fill();
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
         }
-        
         if (!this.gameOver && this.gameStarted && this.myColor === this.currentTurn && hx >= 0 && hx < size && hy >= 0 && hy < size && !this.pieces[hy][hx]) {
             this.drawPiece(hx, hy, this.currentTurn, true);
         }
     }
-    
+
     drawPiece(x, y, color, preview) {
         const ctx = this.ctx, cx = this.padding + x * this.cellSize, cy = this.padding + y * this.cellSize, r = this.cellSize / 2 - 2;
         ctx.save(); if (preview) ctx.globalAlpha = 0.4;
@@ -435,7 +316,7 @@ class GomokuOnline {
         else { g.addColorStop(0, '#fff'); g.addColorStop(0.7, '#eee'); g.addColorStop(1, '#ccc'); }
         ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.stroke(); ctx.restore();
     }
-    
+
     handleClick(e) {
         if (this.gameOver || !this.gameStarted || this.myColor !== this.currentTurn) return;
         const rect = this.canvas.getBoundingClientRect();
@@ -445,7 +326,7 @@ class GomokuOnline {
         if (x < 0 || x >= 15 || y < 0 || y >= 15 || this.pieces[y][x]) return;
         this.makeMove(x, y);
     }
-    
+
     handleHover(e) {
         if (this.gameOver || !this.gameStarted || this.myColor !== this.currentTurn) return;
         const rect = this.canvas.getBoundingClientRect();
@@ -455,204 +336,78 @@ class GomokuOnline {
         if (x >= 0 && x < 15 && y >= 0 && y < 15 && !this.pieces[y][x]) this.drawBoard(x, y);
         else this.drawBoard();
     }
-    
+
     async makeMove(x, y) {
         if (this.isAI) {
-            // 人机模式
-            this.pieces[y][x] = 'black';
-            this.moveCount++;
-            this.lastMove = { x, y };
+            this.pieces[y][x] = 'black'; this.moveCount++; this.lastMove = { x, y };
             moveCountEl.textContent = this.moveCount;
-            
             if (this.checkWinForAI(x, y, 'black')) {
                 this.gameOver = true; this.stopTimer();
-                gameStatusDiv.textContent = '🏆 游戏结束';
-                gameStatusDiv.className = 'status-display win';
-                gameHint.textContent = '游戏结束';
-                winnerDisplay.textContent = '🎉 你赢了！';
-                winDescription.textContent = '经过 ' + this.moveCount + ' 步';
-                winModal.style.display = 'flex';
+                gameStatusDiv.textContent = '🏆 游戏结束'; gameStatusDiv.className = 'status-display win';
+                gameHint.textContent = '游戏结束'; winnerDisplay.textContent = '🎉 你赢了！';
+                winDescription.textContent = '经过 ' + this.moveCount + ' 步'; winModal.style.display = 'flex';
             } else {
-                this.currentTurn = 'white';
-                gameHint.textContent = '电脑思考中...';
-                this.updateTurnUI();
-                this.drawBoard();
+                this.currentTurn = 'white'; gameHint.textContent = '电脑思考中...';
+                this.updateTurnUI(); this.drawBoard();
                 setTimeout(() => this.aiMove(), 300);
             }
-            this.updateTurnUI();
-            this.drawBoard();
-            return;
+            this.updateTurnUI(); this.drawBoard(); return;
         }
-        
-        // 在线模式
         try {
             const data = await api(`/api/rooms/${currentRoom.room_code}/move`, 'POST', { x, y });
             this.pieces = JSON.parse(JSON.stringify(data.board_state));
-            this.moveCount = (data.move_history || []).length;
-            this.lastMove = { x, y };
+            this.moveCount = (data.move_history || []).length; this.lastMove = { x, y };
             moveCountEl.textContent = this.moveCount;
             if (data.game_over) {
                 this.gameOver = true; this.stopTimer();
-                gameStatusDiv.textContent = '🏆 游戏结束';
-                gameStatusDiv.className = 'status-display win';
+                gameStatusDiv.textContent = '🏆 游戏结束'; gameStatusDiv.className = 'status-display win';
                 gameHint.textContent = '游戏结束';
-                const winnerName = data.winner || '';
-                const isMe = currentUser && winnerName === currentUser.username;
-                if (isMe) {
-                    winnerDisplay.textContent = '🎉 你赢了！';
-                } else if (winnerName) {
-                    winnerDisplay.textContent = '很遗憾，你输了，' + winnerName + ' 获胜';
-                } else {
-                    winnerDisplay.textContent = '游戏结束';
-                }
-                winDescription.textContent = '经过 ' + this.moveCount + ' 步';
-                winModal.style.display = 'flex';
-            } else {
-                this.currentTurn = data.current_turn;
-                gameHint.textContent = '等待对手落子...';
-            }
+                const wn = data.winner || '';
+                winnerDisplay.textContent = (currentUser && wn === currentUser.username) ? '🎉 你赢了！' : ('很遗憾，你输了，' + wn + ' 获胜');
+                winDescription.textContent = '经过 ' + this.moveCount + ' 步'; winModal.style.display = 'flex';
+            } else { this.currentTurn = data.current_turn; gameHint.textContent = '等待对手落子...'; }
             this.updateTurnUI(); this.drawBoard();
         } catch (err) {}
     }
-    
-            // ========== AI 逻辑（重写版）==========
+
+    // ========== AI ==========
     aiMove() {
         if (this.gameOver || !this.isAI) return;
-        
-        // 1. 自己能赢
         const win = this.findWinningMove('white');
         if (win) { this.placeAIMove(win.x, win.y); return; }
-        
-        // 2. 堵对方赢
         const block = this.findWinningMove('black');
         if (block) { this.placeAIMove(block.x, block.y); return; }
-        
-        // 3. 堵对方活三
-        const block3 = this.findOpenThree('black');
-        if (block3) { this.placeAIMove(block3.x, block3.y); return; }
-        
-        // 4. 自己做活三
-        const make3 = this.findOpenThree('white');
-        if (make3) { this.placeAIMove(make3.x, make3.y); return; }
-        
-        // 5. 评分选最优
         const best = this.findBestPosition();
-        if (best) { this.placeAIMove(best.x, best.y); }
+        if (best) this.placeAIMove(best.x, best.y);
     }
-    
-    // 找能直接赢的位置（五连或活四）
+
     findWinningMove(player) {
         for (let y = 0; y < 15; y++) {
             for (let x = 0; x < 15; x++) {
                 if (this.pieces[y][x] !== null) continue;
                 this.pieces[y][x] = player;
-                if (this.checkWinForAI(x, y, player)) {
-                    this.pieces[y][x] = null;
-                    return { x, y };
-                }
+                if (this.checkWinForAI(x, y, player)) { this.pieces[y][x] = null; return { x, y }; }
                 this.pieces[y][x] = null;
             }
         }
         return null;
     }
-    
-    // 找活三（两头都能延伸的三连）
-    findOpenThree(player) {
-        const directions = [[1,0],[0,1],[1,1],[1,-1]];
-        let bestScore = -1;
-        let bestMove = null;
-        
-        for (let y = 0; y < 15; y++) {
-            for (let x = 0; x < 15; x++) {
-                if (this.pieces[y][x] !== null) continue;
-                
-                // 模拟下子，看能形成多少个活三
-                this.pieces[y][x] = player;
-                let threeCount = 0;
-                
-                for (const [dx, dy] of directions) {
-                    if (this.hasOpenThree(x, y, dx, dy, player)) {
-                        threeCount++;
-                    }
-                }
-                
-                this.pieces[y][x] = null;
-                
-                if (threeCount > bestScore) {
-                    bestScore = threeCount;
-                    bestMove = { x, y };
-                }
-            }
-        }
-        
-        return bestScore > 0 ? bestMove : null;
-    }
-    
-    // 检查某个方向是否有活三
-    hasOpenThree(x, y, dx, dy, player) {
-        const line = [];
-        // 收集这个方向上的9个格子（x,y 在中间）
-        for (let i = -4; i <= 4; i++) {
-            const nx = x + dx * i, ny = y + dy * i;
-            if (nx < 0 || nx >= 15 || ny < 0 || ny >= 15) {
-                line.push('X'); // 边界
-            } else if (this.pieces[ny][nx] === player) {
-                line.push('P'); // 自己的子
-            } else if (this.pieces[ny][nx] === null) {
-                line.push('.'); // 空位
-            } else {
-                line.push('O'); // 对方的子
-            }
-        }
-        
-        // 检查是否有连续的三个自己的子，且两端都有空位
-        for (let i = 0; i <= line.length - 5; i++) {
-            // 模式: .PPP. 或 .PP.P. 等
-            const segment = line.slice(i, i + 5);
-            const str = segment.join('');
-            
-            // 活三模式
-            const patterns = [
-                /^\.PPP\./,   // 三连，两头空
-                /^\.PP\.P\./, // 跳活三
-                /^\.P\.PP\./,
-            ];
-            
-            for (const pat of patterns) {
-                if (pat.test(str)) return true;
-            }
-        }
-        
-        return false;
-    }
-    
-    // 找最优位置（综合评分）
+
     findBestPosition() {
-        let bestScore = -Infinity;
-        let bestMove = { x: 7, y: 7 };
-        
-        // 只在有棋子的位置周围搜索
-        const candidates = this.getCandidateMoves();
-        
+        let bestScore = -Infinity, bestMove = { x: 7, y: 7 };
+        const candidates = this.getCandidates();
         for (const { x, y } of candidates) {
             const score = this.evaluatePoint(x, y);
-            if (score > bestScore) {
-                bestScore = score;
-                bestMove = { x, y };
-            }
+            if (score > bestScore) { bestScore = score; bestMove = { x, y }; }
         }
-        
         return bestMove;
     }
-    
-    getCandidateMoves() {
-        const candidates = [];
-        const visited = new Set();
-        
+
+    getCandidates() {
+        const candidates = [], visited = new Set();
         for (let y = 0; y < 15; y++) {
             for (let x = 0; x < 15; x++) {
                 if (this.pieces[y][x] === null) continue;
-                
                 for (let dy = -2; dy <= 2; dy++) {
                     for (let dx = -2; dx <= 2; dx++) {
                         const nx = x + dx, ny = y + dy;
@@ -666,126 +421,79 @@ class GomokuOnline {
                 }
             }
         }
-        
         if (candidates.length === 0) candidates.push({ x: 7, y: 7 });
         return candidates;
     }
-    
+
     evaluatePoint(x, y) {
         let score = 0;
-        
-        // 自己放在这里的得分
         this.pieces[y][x] = 'white';
         score += this.getPointScore(x, y, 'white');
-        
-        // 如果对方放这里的得分（堵对方）
         this.pieces[y][x] = 'black';
         score += this.getPointScore(x, y, 'black') * 0.9;
-        
         this.pieces[y][x] = null;
-        
-        // 靠近中心加分
-        const centerDist = Math.abs(x - 7) + Math.abs(y - 7);
-        score += (14 - centerDist) * 3;
-        
+        score += (14 - Math.abs(x - 7) - Math.abs(y - 7)) * 3;
         return score;
     }
-    
+
     getPointScore(x, y, player) {
         let score = 0;
-        const directions = [[1,0],[0,1],[1,1],[1,-1]];
-        
-        for (const [dx, dy] of directions) {
-            score += this.evaluateDirection(x, y, dx, dy, player);
-        }
-        
+        const dirs = [[1,0],[0,1],[1,1],[1,-1]];
+        for (const [dx, dy] of dirs) score += this.evalDir(x, y, dx, dy, player);
         return score;
     }
-    
-    evaluateDirection(x, y, dx, dy, player) {
-        let count = 1;
-        let openEnds = 0;
-        
-        // 正方向
-        let i = 1;
+
+    evalDir(x, y, dx, dy, player) {
+        let count = 1, open = 0, i = 1;
         while (true) {
             const nx = x + dx * i, ny = y + dy * i;
             if (nx < 0 || nx >= 15 || ny < 0 || ny >= 15) break;
             if (this.pieces[ny][nx] === player) { count++; i++; }
-            else { if (this.pieces[ny][nx] === null) openEnds++; break; }
+            else { if (this.pieces[ny][nx] === null) open++; break; }
         }
-        
-        // 反方向
         i = 1;
         while (true) {
             const nx = x - dx * i, ny = y - dy * i;
             if (nx < 0 || nx >= 15 || ny < 0 || ny >= 15) break;
             if (this.pieces[ny][nx] === player) { count++; i++; }
-            else { if (this.pieces[ny][nx] === null) openEnds++; break; }
+            else { if (this.pieces[ny][nx] === null) open++; break; }
         }
-        
-        // 评分
         if (count >= 5) return 100000;
-        if (count === 4) {
-            if (openEnds === 2) return 50000;  // 活四
-            if (openEnds === 1) return 10000;  // 冲四
-        }
-        if (count === 3) {
-            if (openEnds === 2) return 5000;   // 活三
-            if (openEnds === 1) return 1000;   // 眠三
-        }
-        if (count === 2) {
-            if (openEnds === 2) return 500;    // 活二
-            if (openEnds === 1) return 100;    // 眠二
-        }
-        if (count === 1) {
-            if (openEnds === 2) return 50;     // 活一
-        }
-        
+        if (count === 4) return open === 2 ? 50000 : (open === 1 ? 10000 : 0);
+        if (count === 3) return open === 2 ? 5000 : (open === 1 ? 1000 : 0);
+        if (count === 2) return open === 2 ? 500 : (open === 1 ? 100 : 0);
+        if (count === 1) return open === 2 ? 50 : 0;
         return 0;
     }
-    
+
     placeAIMove(x, y) {
-        this.pieces[y][x] = 'white';
-        this.moveCount++;
-        this.lastMove = { x, y };
+        this.pieces[y][x] = 'white'; this.moveCount++; this.lastMove = { x, y };
         moveCountEl.textContent = this.moveCount;
-        
         if (this.checkWinForAI(x, y, 'white')) {
-            this.gameOver = true;
-            this.stopTimer();
-            gameStatusDiv.textContent = '🏆 游戏结束';
-            gameStatusDiv.className = 'status-display win';
-            gameHint.textContent = '游戏结束';
-            winnerDisplay.textContent = '💪 电脑获胜';
-            winDescription.textContent = '经过 ' + this.moveCount + ' 步';
-            winModal.style.display = 'flex';
-        } else {
-            this.currentTurn = 'black';
-            gameHint.textContent = '轮到你了！';
-        }
-        this.updateTurnUI();
-        this.drawBoard();
+            this.gameOver = true; this.stopTimer();
+            gameStatusDiv.textContent = '🏆 游戏结束'; gameStatusDiv.className = 'status-display win';
+            gameHint.textContent = '游戏结束'; winnerDisplay.textContent = '💪 电脑获胜';
+            winDescription.textContent = '经过 ' + this.moveCount + ' 步'; winModal.style.display = 'flex';
+        } else { this.currentTurn = 'black'; gameHint.textContent = '轮到你了！'; }
+        this.updateTurnUI(); this.drawBoard();
     }
-    
+
     checkWinForAI(x, y, player) {
-        const directions = [[1,0],[0,1],[1,1],[1,-1]];
-        for (const [dx, dy] of directions) {
-            let count = 1;
-            for (let i=1;i<5;i++){ const nx=x+dx*i,ny=y+dy*i; if(nx>=0&&nx<15&&ny>=0&&ny<15&&this.pieces[ny][nx]===player)count++;else break; }
-            for (let i=1;i<5;i++){ const nx=x-dx*i,ny=y-dy*i; if(nx>=0&&nx<15&&ny>=0&&ny<15&&this.pieces[ny][nx]===player)count++;else break; }
-            if(count>=5)return true;
+        const dirs = [[1,0],[0,1],[1,1],[1,-1]];
+        for (const [dx, dy] of dirs) {
+            let c = 1;
+            for (let i=1;i<5;i++){ const nx=x+dx*i,ny=y+dy*i; if(nx>=0&&nx<15&&ny>=0&&ny<15&&this.pieces[ny][nx]===player)c++;else break; }
+            for (let i=1;i<5;i++){ const nx=x-dx*i,ny=y-dy*i; if(nx>=0&&nx<15&&ny>=0&&ny<15&&this.pieces[ny][nx]===player)c++;else break; }
+            if(c>=5)return true;
         }
         return false;
     }
-    
-    cleanup() { this.stopTimer(); }
 
+    cleanup() { this.stopTimer(); }
 }
 
 window.addEventListener('DOMContentLoaded', () => {
     if (authToken) {
-        api('/api/me').then(u => { currentUser = u; showLobby(); })
-        .catch(() => { localStorage.removeItem('token'); authToken = ''; showAuthModal(); });
+        api('/api/me').then(u => { currentUser = u; showLobby(); }).catch(() => { localStorage.removeItem('token'); authToken = ''; showAuthModal(); });
     } else showAuthModal();
 });
