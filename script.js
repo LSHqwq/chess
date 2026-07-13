@@ -522,47 +522,73 @@ class GomokuOnline {
         }
     }
 
-    quickEval(x, y, player) {
+        quickEval(x, y, player) {
         let score = 0;
         const dirs = [[1,0],[0,1],[1,1],[1,-1]];
-        for (const [dx, dy] of dirs) {
-            const { count, open } = this.countDirection(x, y, dx, dy, player);
-            score += this.patternScore(count, open, true);
-        }
+        const opponent = player === 'white' ? 'black' : 'white';
+        
+        // 模拟下子后评估自己
         this.pieces[y][x] = player;
-        let threats = 0;
         for (const [dx, dy] of dirs) {
             const { count, open } = this.countDirection(x, y, dx, dy, player);
-            if ((count === 3 && open === 2) || (count === 4 && open >= 1)) threats++;
+            score += this.patternScore(count, open, player === 'white');
         }
-        if (threats >= 2) score += 20000;
+        
+        // 检测自己是否形成杀招
+        let openFours = 0, openThrees = 0;
+        for (const [dx, dy] of dirs) {
+            const { count, open } = this.countDirection(x, y, dx, dy, player);
+            if (count === 4 && open >= 1) openFours++;
+            if (count === 3 && open === 2) openThrees++;
+        }
+        if (openFours >= 1 || openThrees >= 2) score += 50000;
+        
+        // 评估对方如果占这个点的威胁（防守价值）
+        this.pieces[y][x] = opponent;
+        let oppFours = 0, oppThrees = 0;
+        for (const [dx, dy] of dirs) {
+            const { count, open } = this.countDirection(x, y, dx, dy, opponent);
+            if (count === 4 && open >= 1) oppFours++;
+            if (count === 3 && open === 2) oppThrees++;
+        }
+        if (oppFours >= 1 || oppThrees >= 2) score += 60000;
+        
         this.pieces[y][x] = null;
-        score += (14 - Math.abs(x - 7) - Math.abs(y - 7)) * 3;
+        score += (14 - Math.abs(x - 7) - Math.abs(y - 7)) * 2;
         return score;
     }
-
+    
     evaluateBoard() {
         let score = 0;
         const dirs = [[1,0],[0,1],[1,1],[1,-1]];
         const evaluated = new Set();
+        
         for (let y = 0; y < 15; y++) {
             for (let x = 0; x < 15; x++) {
                 if (this.pieces[y][x] === null) continue;
                 const player = this.pieces[y][x];
+                
                 for (const [dx, dy] of dirs) {
                     const key = `${x},${y},${dx},${dy}`;
                     if (evaluated.has(key)) continue;
+                    
                     const { count, open } = this.countDirection(x, y, dx, dy, player);
                     const s = this.patternScore(count, open, player === 'white');
-                    if (player === 'white') score += s;
-                    else score -= s * 0.95;
+                    
+                    // 白方(AI)加分，黑方(玩家)减分，玩家威胁权重更高
+                    if (player === 'white') {
+                        score += s;
+                    } else {
+                        score -= s; // patternScore 已经给了防守方更高权重
+                    }
+                    
                     evaluated.add(key);
                 }
             }
         }
         return score;
     }
-
+        
     countDirection(x, y, dx, dy, player) {
         let count = 1, open = 0;
         let i = 1;
@@ -583,12 +609,23 @@ class GomokuOnline {
     }
 
     patternScore(count, open, isAI) {
-        const bonus = isAI ? 1.1 : 1.0;
-        if (count >= 5) return 100000 * bonus;
-        if (count === 4) return open === 2 ? 50000 * bonus : (open === 1 ? 8000 * bonus : 0);
-        if (count === 3) return open === 2 ? 4000 * bonus : (open === 1 ? 800 * bonus : 0);
-        if (count === 2) return open === 2 ? 400 * bonus : (open === 1 ? 80 * bonus : 0);
-        if (count === 1 && open === 2) return 30 * bonus;
+        // 防守价值 = 攻击价值 * 1.2
+        const bonus = isAI ? 1.0 : 1.2;
+        
+        if (count >= 5) return 100000;
+        if (count === 4) {
+            if (open === 2) return 50000 * bonus;  // 活四
+            if (open === 1) return 10000 * bonus;  // 冲四
+        }
+        if (count === 3) {
+            if (open === 2) return 5000 * bonus;   // 活三
+            if (open === 1) return 1000 * bonus;   // 眠三
+        }
+        if (count === 2) {
+            if (open === 2) return 500 * bonus;    // 活二
+            if (open === 1) return 100 * bonus;    // 眠二
+        }
+        if (count === 1 && open === 2) return 50 * bonus;
         return 0;
     }
 
