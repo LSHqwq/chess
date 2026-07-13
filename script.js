@@ -615,11 +615,11 @@ class GomokuOnline {
         if (count >= 5) return 100000;
         if (count === 4) {
             if (open === 2) return 50000 * bonus;  // 活四
-            if (open === 1) return 10000 * bonus;  // 冲四
+            if (open === 1) return 12000 * bonus;  // 冲四
         }
         if (count === 3) {
             if (open === 2) return 5000 * bonus;   // 活三
-            if (open === 1) return 1000 * bonus;   // 眠三
+            if (open === 1) return 1500 * bonus;   // 眠三
         }
         if (count === 2) {
             if (open === 2) return 500 * bonus;    // 活二
