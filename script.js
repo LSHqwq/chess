@@ -341,7 +341,7 @@ class GomokuOnline {
         if (this.isAI) {
             this.pieces[y][x] = 'black'; this.moveCount++; this.lastMove = { x, y };
             moveCountEl.textContent = this.moveCount;
-            if (this.checkWinForAI(x, y, 'black')) {
+            if (this.checkLocalWin(x, y, 'black')) {
                 this.gameOver = true; this.stopTimer();
                 gameStatusDiv.textContent = '🏆 游戏结束'; gameStatusDiv.className = 'status-display win';
                 gameHint.textContent = '游戏结束'; winnerDisplay.textContent = '🎉 你赢了！';
@@ -349,7 +349,7 @@ class GomokuOnline {
             } else {
                 this.currentTurn = 'white'; gameHint.textContent = '电脑思考中...';
                 this.updateTurnUI(); this.drawBoard();
-                setTimeout(() => this.aiMove(), 300);
+                setTimeout(() => this.aiMove(), 200);
             }
             this.updateTurnUI(); this.drawBoard(); return;
         }
@@ -377,6 +377,8 @@ class GomokuOnline {
         if (win) { this.placeAIMove(win.x, win.y); return; }
         const block = this.findWinningMove('black');
         if (block) { this.placeAIMove(block.x, block.y); return; }
+        const block3 = this.findBlockThree();
+        if (block3) { this.placeAIMove(block3.x, block3.y); return; }
         const best = this.findBestPosition();
         if (best) this.placeAIMove(best.x, best.y);
     }
@@ -386,11 +388,58 @@ class GomokuOnline {
             for (let x = 0; x < 15; x++) {
                 if (this.pieces[y][x] !== null) continue;
                 this.pieces[y][x] = player;
-                if (this.checkWinForAI(x, y, player)) { this.pieces[y][x] = null; return { x, y }; }
+                if (this.checkLocalWin(x, y, player)) { this.pieces[y][x] = null; return { x, y }; }
                 this.pieces[y][x] = null;
             }
         }
         return null;
+    }
+
+    findBlockThree() {
+        for (let y = 0; y < 15; y++) {
+            for (let x = 0; x < 15; x++) {
+                if (this.pieces[y][x] !== null) continue;
+                this.pieces[y][x] = 'black';
+                let threats = this.countThreats(x, y, 'black');
+                this.pieces[y][x] = null;
+                if (threats >= 2) return { x, y };
+            }
+        }
+        for (let y = 0; y < 15; y++) {
+            for (let x = 0; x < 15; x++) {
+                if (this.pieces[y][x] !== null) continue;
+                this.pieces[y][x] = 'black';
+                let threats = this.countThreats(x, y, 'black');
+                this.pieces[y][x] = null;
+                if (threats >= 1) return { x, y };
+            }
+        }
+        return null;
+    }
+
+    countThreats(x, y, player) {
+        const dirs = [[1,0],[0,1],[1,1],[1,-1]];
+        let threats = 0;
+        for (const [dx, dy] of dirs) {
+            let count = 1, open = 0, i = 1;
+            while (true) {
+                const nx = x + dx * i, ny = y + dy * i;
+                if (nx < 0 || nx >= 15 || ny < 0 || ny >= 15) break;
+                if (this.pieces[ny][nx] === player) { count++; i++; }
+                else { if (this.pieces[ny][nx] === null) open++; break; }
+            }
+            i = 1;
+            while (true) {
+                const nx = x - dx * i, ny = y - dy * i;
+                if (nx < 0 || nx >= 15 || ny < 0 || ny >= 15) break;
+                if (this.pieces[ny][nx] === player) { count++; i++; }
+                else { if (this.pieces[ny][nx] === null) open++; break; }
+            }
+            if (count === 4 && open >= 1) threats += 2;
+            if (count === 3 && open === 2) threats += 2;
+            if (count === 3 && open === 1) threats += 1;
+        }
+        return threats;
     }
 
     findBestPosition() {
@@ -469,7 +518,7 @@ class GomokuOnline {
     placeAIMove(x, y) {
         this.pieces[y][x] = 'white'; this.moveCount++; this.lastMove = { x, y };
         moveCountEl.textContent = this.moveCount;
-        if (this.checkWinForAI(x, y, 'white')) {
+        if (this.checkLocalWin(x, y, 'white')) {
             this.gameOver = true; this.stopTimer();
             gameStatusDiv.textContent = '🏆 游戏结束'; gameStatusDiv.className = 'status-display win';
             gameHint.textContent = '游戏结束'; winnerDisplay.textContent = '💪 电脑获胜';
@@ -478,7 +527,7 @@ class GomokuOnline {
         this.updateTurnUI(); this.drawBoard();
     }
 
-    checkWinForAI(x, y, player) {
+    checkLocalWin(x, y, player) {
         const dirs = [[1,0],[0,1],[1,1],[1,-1]];
         for (const [dx, dy] of dirs) {
             let c = 1;
