@@ -161,7 +161,7 @@ function stopSync() { syncRunning = false; if (syncTimer) { clearTimeout(syncTim
 
 async function syncLoop() {
     if (!syncRunning) return;
-    if (!currentRoom || !currentRoom.room_code) { syncTimer = setTimeout(syncLoop, 2000); return; }
+    if (!currentRoom || !currentRoom.room_code || currentRoom.room_code === 'AI') { syncTimer = setTimeout(syncLoop, 2000); return; }
     try {
         const data = await api(`/api/rooms/${currentRoom.room_code}`);
         
@@ -219,7 +219,11 @@ async function syncLoop() {
 // ========== 游戏界面 ==========
 function showGameRoom() {
     lobby.style.display = 'none'; gameRoomEl.style.display = 'flex';
-    roomCodeDisplay.textContent = '房间: ' + currentRoom.room_code;
+    if (currentRoom.room_code === 'AI') {
+        roomCodeDisplay.textContent = '🤖 人机对战';
+    } else {
+        roomCodeDisplay.textContent = '房间: ' + currentRoom.room_code;
+    }
     blackNameEl.textContent = currentRoom.black_player || '等待中';
     whiteNameEl.textContent = currentRoom.white_player || '等待中';
     if (!game) game = new GomokuOnline();
@@ -227,7 +231,7 @@ function showGameRoom() {
 }
 
 leaveRoomBtn.addEventListener('click', async () => {
-    if (currentRoom) {
+    if (currentRoom && !game.isAI) {
         try { await api(`/api/rooms/${currentRoom.room_code}/leave`, 'POST'); } catch (err) {}
     }
     stopSync();
@@ -240,6 +244,7 @@ restartBtn.addEventListener('click', async () => {
     if (!currentRoom || game.gameStarted === false) return;
     if (game.isAI) {
         game.reset(currentRoom);
+        game.isAI = true;
         game.onGameStart();
         return;
     }
@@ -255,6 +260,7 @@ modalRestartBtn.addEventListener('click', async () => {
     if (!currentRoom) return;
     if (game.isAI) {
         game.reset(currentRoom);
+        game.isAI = true;
         game.onGameStart();
         return;
     }
@@ -286,7 +292,6 @@ class GomokuOnline {
         this.currentTurn = 'black'; this.gameOver = false; this.moveCount = 0;
         this.gameStarted = false; this.gameStartTime = null;
         this.lastMove = null;
-        this.isAI = false;
         gameTimeEl.textContent = '00:00'; moveCountEl.textContent = '0';
         gameStatusDiv.textContent = ''; gameStatusDiv.className = 'status-display';
         gameHint.textContent = ''; winModal.style.display = 'none';
