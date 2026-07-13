@@ -87,6 +87,7 @@ function showLobby() {
     authModal.style.display = 'none'; lobby.style.display = 'flex'; gameRoomEl.style.display = 'none';
     displayUsername.textContent = '👤 ' + currentUser.username; logoutBtn.style.display = 'block';
     lobbyError.textContent = ''; joinRoomInput.value = '';
+    if (game) { game.isAI = false; game.cleanup(); }
     loadRoomList();
 }
 
@@ -117,6 +118,7 @@ async function quickJoin(code) {
         const data = await api(`/api/rooms/${code}/join`, 'POST');
         currentRoom = { room_code: data.room_code, status: 'playing', black_player: data.black_player, white_player: data.white_player };
         showGameRoom();
+        game.isAI = false;
         game.myColor = 'white'; game.onGameStart(); startSync();
     } catch (err) {
         lobbyError.textContent = err.message;
@@ -130,8 +132,8 @@ refreshRoomsBtn.addEventListener('click', loadRoomList);
 aiPlayBtn.addEventListener('click', () => {
     currentRoom = { room_code: 'AI', status: 'playing', black_player: currentUser.username, white_player: '电脑' };
     showGameRoom();
-    game.myColor = 'black';
     game.isAI = true;
+    game.myColor = 'black';
     game.onGameStart();
 });
 
@@ -139,7 +141,9 @@ createRoomBtn.addEventListener('click', async () => {
     try {
         const data = await api('/api/rooms', 'POST');
         currentRoom = { room_code: data.room_code, status: 'waiting', black_player: currentUser.username, white_player: null };
-        showGameRoom(); startSync();
+        showGameRoom();
+        game.isAI = false;
+        startSync();
     } catch (err) { lobbyError.textContent = err.message; }
 });
 
@@ -150,6 +154,7 @@ joinRoomBtn.addEventListener('click', async () => {
         const data = await api(`/api/rooms/${code}/join`, 'POST');
         currentRoom = { room_code: data.room_code, status: 'playing', black_player: data.black_player, white_player: data.white_player };
         showGameRoom();
+        game.isAI = false;
         game.myColor = 'white'; game.onGameStart(); startSync();
     } catch (err) { lobbyError.textContent = err.message; }
 });
@@ -208,7 +213,7 @@ async function syncLoop() {
             stopSync();
             alert('房间已解散');
             currentRoom = null;
-            if (game) game.cleanup();
+            if (game) { game.isAI = false; game.cleanup(); }
             showLobby();
             return;
         }
@@ -236,7 +241,7 @@ leaveRoomBtn.addEventListener('click', async () => {
     }
     stopSync();
     currentRoom = null;
-    if (game) game.cleanup();
+    if (game) { game.isAI = false; game.cleanup(); }
     showLobby();
 });
 
@@ -244,7 +249,6 @@ restartBtn.addEventListener('click', async () => {
     if (!currentRoom || game.gameStarted === false) return;
     if (game.isAI) {
         game.reset(currentRoom);
-        game.isAI = true;
         game.onGameStart();
         return;
     }
@@ -260,7 +264,6 @@ modalRestartBtn.addEventListener('click', async () => {
     if (!currentRoom) return;
     if (game.isAI) {
         game.reset(currentRoom);
-        game.isAI = true;
         game.onGameStart();
         return;
     }
