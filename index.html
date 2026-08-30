@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>国际象棋 - 在线对战</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>♚ 国际象棋</h1>
+            <div id="game-status">等待开始...</div>
+            <div id="player-info">
+                <span id="player-color">你: 白棋</span>
+                <span id="opponent-status">对手: 未连接</span>
+            </div>
+        </header>
+        
+        <main>
+            <div id="board-container">
+                <div id="chess-board"></div>
+            </div>
+            
+            <div id="controls">
+                <button id="btn-new-game">新游戏</button>
+                <button id="btn-resign">认输</button>
+                <button id="btn-draw">提和</button>
+                <button id="btn-undo">悔棋</button>
+            </div>
+            
+            <div id="move-history">
+                <h3>走法记录</h3>
+                <div id="moves-list"></div>
+            </div>
+        </main>
+        
+        <div id="modal" class="hidden">
+            <div id="modal-content">
+                <h2 id="modal-title">游戏结束</h2>
+                <p id="modal-message">白方胜!</p>
+                <button id="modal-btn">确定</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
