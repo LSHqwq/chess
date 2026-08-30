@@ -72,9 +72,14 @@ const leaveRoomBtn = document.getElementById('leave-room-btn');
 const restartBtn = document.getElementById('restart-btn');
 const drawBtn = document.getElementById('draw-btn');
 const winModal = document.getElementById('win-modal');
+const resultIcon = document.getElementById('result-icon');
+const resultTitle = document.getElementById('result-title');
 const winnerDisplay = document.getElementById('winner-display');
 const winDescription = document.getElementById('win-description');
 const modalRestartBtn = document.getElementById('modal-restart-btn');
+const checkModal = document.getElementById('check-modal');
+const checkMessage = document.getElementById('check-message');
+const checkModalBtn = document.getElementById('check-modal-btn');
 const gameTimeEl = document.getElementById('game-time');
 const moveCountEl = document.getElementById('move-count');
 const gameStatusDiv = document.getElementById('game-status');
@@ -138,7 +143,6 @@ function handleWSMessage(data) {
     
     switch (data.type) {
         case 'player_joined':
-            // 对方加入
             if (currentRoom && currentRoom.status === 'waiting') {
                 currentRoom.status = 'playing';
                 game.myColor = 'white';
@@ -148,19 +152,17 @@ function handleWSMessage(data) {
             break;
             
         case 'move':
-            // 对方走棋
             game.syncFromServer(data);
             break;
             
         case 'restart':
-            // 对方重新开始
             winModal.style.display = 'none';
+            checkModal.style.display = 'none';
             game.reset(currentRoom);
             game.onGameStart();
             break;
             
         case 'draw_offer':
-            // 对方求和
             if (!drawModalShown && !game.gameOver) {
                 drawModalShown = true;
                 showDrawOffer(data.from, currentRoom.room_code);
@@ -168,27 +170,26 @@ function handleWSMessage(data) {
             break;
             
         case 'draw_agreed':
-            // 求和同意
             game.gameOver = true;
             game.stopTimer();
-            gameStatusDiv.textContent = '游戏结束';
+            gameStatusDiv.textContent = '和棋';
             gameStatusDiv.className = 'status-display win';
-            gameHint.textContent = '游戏结束';
-            winnerDisplay.textContent = '平局！';
-            winDescription.textContent = '双方同意和棋';
+            gameHint.textContent = '和棋';
+            resultIcon.textContent = '🤝';
+            resultTitle.textContent = '和棋';
+            winnerDisplay.textContent = '双方同意和棋';
+            winDescription.textContent = `经过 ${game.moveCount} 步`;
             winModal.style.display = 'flex';
             game.drawBoard();
             drawModalShown = false;
             break;
             
         case 'draw_rejected':
-            // 求和被拒
             drawModalShown = false;
             gameHint.textContent = '对方拒绝了求和';
             break;
             
         case 'player_left':
-            // 对方离开
             showModal({ 
                 title: '对方离开', 
                 message: '对方离开了房间', 
@@ -206,7 +207,6 @@ function handleWSMessage(data) {
             break;
             
         case 'timeout':
-            // 超时
             showModal({ 
                 title: '超时', 
                 message: '房间因长时间无活动已关闭', 
@@ -454,6 +454,7 @@ restartBtn.addEventListener('click', async () => {
 
 modalRestartBtn.addEventListener('click', async () => {
     winModal.style.display = 'none';
+    checkModal.style.display = 'none';
     if (!currentRoom) return;
     if (game.isAI) {
         game.reset(currentRoom);
@@ -467,6 +468,10 @@ modalRestartBtn.addEventListener('click', async () => {
     }
 });
 
+checkModalBtn.addEventListener('click', () => {
+    checkModal.style.display = 'none';
+});
+
 drawBtn.addEventListener('click', async () => {
     if (!currentRoom || game.isAI || game.gameOver) return;
     try {
@@ -476,6 +481,39 @@ drawBtn.addEventListener('click', async () => {
         showToast(err.message);
     }
 });
+
+// ========== 棋子动画类 ==========
+class PieceAnimation {
+    constructor(fromX, fromY, toX, toY, piece, color) {
+        this.fromX = fromX;
+        this.fromY = fromY;
+        this.toX = toX;
+        this.toY = toY;
+        this.piece = piece;
+        this.color = color;
+        this.progress = 0;
+        this.duration = 350;
+        this.startTime = Date.now();
+        this.active = true;
+    }
+    
+    update() {
+        const elapsed = Date.now() - this.startTime;
+        this.progress = Math.min(elapsed / this.duration, 1);
+        // 缓动函数 - easeOutCubic
+        this.progress = 1 - Math.pow(1 - this.progress, 3);
+        if (this.progress >= 1) {
+            this.active = false;
+        }
+    }
+    
+    getCurrentPosition() {
+        const x = this.fromX + (this.toX - this.fromX) * this.progress;
+        const y = this.fromY + (this.toY - this.fromY) * this.progress;
+        const scale = 1 + 0.1 * Math.sin(this.progress * Math.PI);
+        return { x, y, scale };
+    }
+}
 
 // ========== 国际象棋游戏类 ==========
 class ChessGame {
@@ -491,12 +529,18 @@ class ChessGame {
         this.myColor = 'white';
         this.isAI = false;
         this.lastMove = null;
+        this.animations = [];
+        this.moveCount = 0;
+        this.inCheck = false;
         this.pieceSymbols = {
             'K': '♔', 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
             'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟'
         };
         this.canvas = document.getElementById('board');
         this.ctx = this.canvas.getContext('2d');
+        this.cellSize = 600 / 8;
+        this.animationId = null;
+        
         this.canvas.addEventListener('click', (e) => this.handleClick(e));
         this.drawBoard();
     }
@@ -518,6 +562,10 @@ class ChessGame {
 
     reset(roomData) {
         this.stopTimer();
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
         this.board = this.initBoard();
         this.currentTurn = 'white';
         this.selectedSquare = null;
@@ -526,15 +574,22 @@ class ChessGame {
         this.gameStarted = false;
         this.gameStartTime = null;
         this.lastMove = null;
+        this.animations = [];
+        this.moveCount = 0;
+        this.inCheck = false;
         movesList.innerHTML = '';
         moveCountEl.textContent = '0';
         gameTimeEl.textContent = '00:00';
         gameStatusDiv.textContent = '';
         gameStatusDiv.className = 'status-display';
         gameHint.textContent = '';
+        gameHint.className = 'hint-text';
         winModal.style.display = 'none';
+        checkModal.style.display = 'none';
         turnIndicator.className = 'turn-display white-turn';
         currentPlayerText.textContent = '白棋走子';
+        whiteCard.classList.remove('in-check');
+        blackCard.classList.remove('in-check');
         whiteCard.classList.add('active-player');
         blackCard.classList.remove('active-player');
         
@@ -552,8 +607,7 @@ class ChessGame {
         this.startTimer();
         gameStatusDiv.textContent = '游戏进行中';
         gameStatusDiv.className = 'status-display';
-        const isWhite = this.myColor === 'white';
-        gameHint.textContent = isWhite ? '你执白，请走棋' : '你执黑，等待白棋走棋';
+        this.updateTurnUI();
     }
 
     startTimer() {
@@ -575,6 +629,10 @@ class ChessGame {
 
     cleanup() {
         this.stopTimer();
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
     }
 
     getPieceSymbol(piece) {
@@ -582,92 +640,7 @@ class ChessGame {
         return this.pieceSymbols[piece.type] || '';
     }
 
-    drawBoard(hoverX = -1, hoverY = -1) {
-        const ctx = this.ctx;
-        const size = 600;
-        const cellSize = size / 8;
-        
-        ctx.clearRect(0, 0, size, size);
-        
-        // 绘制棋盘
-        for (let row = 0; row < 8; row++) {
-            for (let col = 0; col < 8; col++) {
-                const isLight = (row + col) % 2 === 0;
-                ctx.fillStyle = isLight ? '#f0d9b5' : '#b58863';
-                ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
-                
-                // 标记最后一步
-                if (this.lastMove) {
-                    if ((row === this.lastMove.fromRow && col === this.lastMove.fromCol) ||
-                        (row === this.lastMove.toRow && col === this.lastMove.toCol)) {
-                        ctx.fillStyle = 'rgba(255, 255, 0, 0.3)';
-                        ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
-                    }
-                }
-            }
-        }
-        
-        // 绘制棋子
-        for (let row = 0; row < 8; row++) {
-            for (let col = 0; col < 8; col++) {
-                const piece = this.board[row][col];
-                if (piece) {
-                    const x = col * cellSize + cellSize / 2;
-                    const y = row * cellSize + cellSize / 2;
-                    ctx.font = '40px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.shadowColor = 'rgba(0,0,0,0.3)';
-                    ctx.shadowBlur = 8;
-                    ctx.fillStyle = piece.color === 'white' ? '#ffffff' : '#1a1a1a';
-                    ctx.fillText(this.getPieceSymbol(piece), x, y);
-                    ctx.shadowBlur = 0;
-                }
-            }
-        }
-        
-        // 高亮选中的棋子
-        if (this.selectedSquare) {
-            const { row, col } = this.selectedSquare;
-            ctx.fillStyle = 'rgba(255, 255, 0, 0.3)';
-            ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
-        }
-        
-        // 显示合法走法
-        if (this.selectedSquare) {
-            const { row, col } = this.selectedSquare;
-            const moves = this.getLegalMoves(row, col);
-            for (const move of moves) {
-                const x = move.toCol * cellSize + cellSize / 2;
-                const y = move.toRow * cellSize + cellSize / 2;
-                ctx.beginPath();
-                if (this.board[move.toRow][move.toCol]) {
-                    ctx.arc(x, y, cellSize / 2 - 4, 0, Math.PI * 2);
-                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
-                    ctx.lineWidth = 4;
-                    ctx.stroke();
-                } else {
-                    ctx.arc(x, y, 10, 0, Math.PI * 2);
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-                    ctx.fill();
-                }
-            }
-        }
-        
-        // 悬停预览
-        if (!this.gameOver && this.gameStarted && 
-            this.myColor === this.currentTurn && 
-            hoverX >= 0 && hoverX < 8 && hoverY >= 0 && hoverY < 8 &&
-            !this.board[hoverY][hoverX]) {
-            const x = hoverX * cellSize + cellSize / 2;
-            const y = hoverY * cellSize + cellSize / 2;
-            ctx.beginPath();
-            ctx.arc(x, y, cellSize / 2 - 4, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-            ctx.fill();
-        }
-    }
-
+    // ========== 走法生成 ==========
     getLegalMoves(fromRow, fromCol) {
         const piece = this.board[fromRow][fromCol];
         if (!piece) return [];
@@ -760,10 +733,92 @@ class ChessGame {
         return moves;
     }
 
-    makeMove(move) {
+    // ========== 将军检测 ==========
+    findKing(color) {
+        const kingType = color === 'white' ? 'K' : 'k';
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const p = this.board[r][c];
+                if (p && p.type === kingType && p.color === color) {
+                    return { row: r, col: c };
+                }
+            }
+        }
+        return null;
+    }
+
+    isInCheck(color) {
+        const king = this.findKing(color);
+        if (!king) return true;
+        
+        const opponent = color === 'white' ? 'black' : 'white';
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const p = this.board[r][c];
+                if (p && p.color === opponent) {
+                    const moves = this.getLegalMoves(r, c);
+                    for (const move of moves) {
+                        if (move.toRow === king.row && move.toCol === king.col) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    isCheckmate(color) {
+        if (!this.isInCheck(color)) return false;
+        return this.hasLegalMoves(color);
+    }
+
+    isStalemate(color) {
+        if (this.isInCheck(color)) return false;
+        return this.hasLegalMoves(color);
+    }
+
+    hasLegalMoves(color) {
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const p = this.board[r][c];
+                if (p && p.color === color) {
+                    const moves = this.getLegalMoves(r, c);
+                    for (const move of moves) {
+                        // 模拟走法检查是否解除将军
+                        const captured = this.board[move.toRow][move.toCol];
+                        this.board[move.toRow][move.toCol] = this.board[move.fromRow][move.fromCol];
+                        this.board[move.fromRow][move.fromCol] = null;
+                        const inCheck = this.isInCheck(color);
+                        this.board[move.fromRow][move.fromCol] = this.board[move.toRow][move.toCol];
+                        this.board[move.toRow][move.toCol] = captured;
+                        if (!inCheck) return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    // ========== 执行走法 ==========
+    makeMove(move, animate = true) {
         const { fromRow, fromCol, toRow, toCol } = move;
         const piece = this.board[fromRow][fromCol];
         const captured = this.board[toRow][toCol];
+        
+        // 创建动画
+        if (animate) {
+            const fromX = fromCol * this.cellSize + this.cellSize / 2;
+            const fromY = fromRow * this.cellSize + this.cellSize / 2;
+            const toX = toCol * this.cellSize + this.cellSize / 2;
+            const toY = toRow * this.cellSize + this.cellSize / 2;
+            this.animations.push(new PieceAnimation(fromX, fromY, toX, toY, piece, piece.color));
+            
+            // 如果有吃子，添加闪烁效果
+            if (captured) {
+                // 在吃子位置添加一个消失动画
+            }
+        }
         
         this.moveHistory.push({
             fromRow, fromCol, toRow, toCol,
@@ -778,12 +833,91 @@ class ChessGame {
         this.moveCount = this.moveHistory.length;
         moveCountEl.textContent = this.moveCount;
         
+        // 更新走法记录
         this.updateMoveHistory();
         this.updateTurnUI();
-        this.drawBoard();
         
-        // 检查游戏结束
-        this.checkGameOver();
+        // 检测将军
+        const inCheck = this.isInCheck(this.currentTurn);
+        this.inCheck = inCheck;
+        
+        if (inCheck) {
+            // 检测是否将死
+            if (this.isCheckmate(this.currentTurn)) {
+                // 将死！
+                this.gameOver = true;
+                this.stopTimer();
+                const winner = this.currentTurn === 'white' ? '黑方' : '白方';
+                gameStatusDiv.textContent = '将死！';
+                gameStatusDiv.className = 'status-display win';
+                gameHint.textContent = `${winner}胜！`;
+                resultIcon.textContent = '👑';
+                resultTitle.textContent = '将死！';
+                winnerDisplay.textContent = `${winner}获胜！`;
+                winDescription.textContent = `经过 ${this.moveCount} 步`;
+                winModal.style.display = 'flex';
+                this.drawBoard();
+                return;
+            }
+            
+            // 显示将军提示
+            this.showCheckAlert(this.currentTurn);
+        } else {
+            // 检测逼和
+            if (this.isStalemate(this.currentTurn)) {
+                this.gameOver = true;
+                this.stopTimer();
+                gameStatusDiv.textContent = '逼和';
+                gameStatusDiv.className = 'status-display win';
+                gameHint.textContent = '和棋';
+                resultIcon.textContent = '🤝';
+                resultTitle.textContent = '逼和';
+                winnerDisplay.textContent = '棋盘已满，无法走棋';
+                winDescription.textContent = `经过 ${this.moveCount} 步`;
+                winModal.style.display = 'flex';
+                this.drawBoard();
+                return;
+            }
+        }
+        
+        // 检测吃子动画
+        this.drawBoard();
+    }
+
+    showCheckAlert(color) {
+        const playerName = color === 'white' ? '白方' : '黑方';
+        checkMessage.textContent = `${playerName}的王被将军了！必须立刻解围！`;
+        checkModal.style.display = 'flex';
+        gameStatusDiv.textContent = '将军！';
+        gameStatusDiv.className = 'status-display check';
+        gameHint.textContent = `${playerName}被将军！`;
+        gameHint.className = 'hint-text check';
+        
+        // 高亮显示王的格子
+        const king = this.findKing(color);
+        if (king) {
+            // 在王的格子上显示红色高亮
+            this.drawBoard();
+            const ctx = this.ctx;
+            const x = king.col * this.cellSize;
+            const y = king.row * this.cellSize;
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+            ctx.fillRect(x, y, this.cellSize, this.cellSize);
+            // 重新绘制棋子
+            const piece = this.board[king.row][king.col];
+            if (piece) {
+                const cx = x + this.cellSize / 2;
+                const cy = y + this.cellSize / 2;
+                ctx.font = 'bold 44px "Segoe UI", "Arial Unicode MS", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.shadowColor = 'rgba(255,0,0,0.5)';
+                ctx.shadowBlur = 20;
+                ctx.fillStyle = piece.color === 'white' ? '#ffffff' : '#1a1a1a';
+                ctx.fillText(this.getPieceSymbol(piece), cx, cy);
+                ctx.shadowBlur = 0;
+            }
+        }
     }
 
     updateMoveHistory() {
@@ -801,59 +935,189 @@ class ChessGame {
             item.textContent = `${prefix} ${pieceSymbol}${from}${capture}${to}`;
             listEl.appendChild(item);
         });
-        // 滚动到底部
         listEl.scrollTop = listEl.scrollHeight;
     }
 
     updateTurnUI() {
-        turnIndicator.className = 'turn-display ' + (this.currentTurn === 'white' ? 'white-turn' : 'black-turn');
-        currentPlayerText.textContent = this.currentTurn === 'white' ? '白棋走子' : '黑棋走子';
-        whiteCard.classList.toggle('active-player', this.currentTurn === 'white');
-        blackCard.classList.toggle('active-player', this.currentTurn === 'black');
+        const isWhiteTurn = this.currentTurn === 'white';
+        turnIndicator.className = 'turn-display ' + (isWhiteTurn ? 'white-turn' : 'black-turn');
+        if (this.inCheck) {
+            turnIndicator.className += ' check';
+        }
+        currentPlayerText.textContent = isWhiteTurn ? '白棋走子' : '黑棋走子';
+        
+        whiteCard.classList.toggle('active-player', isWhiteTurn);
+        blackCard.classList.toggle('active-player', !isWhiteTurn);
+        
+        whiteCard.classList.toggle('in-check', this.inCheck && this.currentTurn === 'white');
+        blackCard.classList.toggle('in-check', this.inCheck && this.currentTurn === 'black');
         
         if (this.gameStarted && !this.gameOver) {
             const isMyTurn = this.myColor === this.currentTurn;
-            gameHint.textContent = isMyTurn ? '轮到你了！' : '等待对方走棋...';
+            if (this.inCheck) {
+                gameHint.textContent = isMyTurn ? '⚠️ 你的王被将军了！必须解围！' : '对方王被将军！';
+                gameHint.className = 'hint-text check';
+            } else {
+                gameHint.textContent = isMyTurn ? '轮到你了！' : '等待对方走棋...';
+                gameHint.className = 'hint-text';
+            }
         }
     }
 
-    checkGameOver() {
-        // 检查王是否被吃
-        let whiteKing = false, blackKing = false;
-        for (let r = 0; r < 8; r++) {
-            for (let c = 0; c < 8; c++) {
-                const p = this.board[r][c];
-                if (p) {
-                    if (p.type === 'K' && p.color === 'white') whiteKing = true;
-                    if (p.type === 'k' && p.color === 'black') blackKing = true;
+    // ========== 绘制棋盘 ==========
+    drawBoard() {
+        const ctx = this.ctx;
+        const size = 600;
+        const cell = this.cellSize;
+        
+        ctx.clearRect(0, 0, size, size);
+        
+        // 绘制棋盘
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                const isLight = (row + col) % 2 === 0;
+                ctx.fillStyle = isLight ? '#f0d9b5' : '#b58863';
+                ctx.fillRect(col * cell, row * cell, cell, cell);
+                
+                // 标记最后一步
+                if (this.lastMove) {
+                    if ((row === this.lastMove.fromRow && col === this.lastMove.fromCol) ||
+                        (row === this.lastMove.toRow && col === this.lastMove.toCol)) {
+                        ctx.fillStyle = 'rgba(255, 255, 0, 0.3)';
+                        ctx.fillRect(col * cell, row * cell, cell, cell);
+                    }
                 }
             }
         }
         
-        if (!whiteKing || !blackKing) {
-            this.gameOver = true;
-            this.stopTimer();
-            gameStatusDiv.textContent = '游戏结束';
-            gameStatusDiv.className = 'status-display win';
-            gameHint.textContent = '游戏结束';
-            
-            if (!whiteKing && !blackKing) {
-                winnerDisplay.textContent = '平局！';
-                winDescription.textContent = '王被吃';
-            } else if (!whiteKing) {
-                const winner = this.myColor === 'white' ? '你输了' : '你赢了';
-                winnerDisplay.textContent = `黑方胜！${winner}`;
-                winDescription.textContent = '白王被吃';
-            } else {
-                const winner = this.myColor === 'white' ? '你赢了' : '你输了';
-                winnerDisplay.textContent = `白方胜！${winner}`;
-                winDescription.textContent = '黑王被吃';
+        // 高亮选中的棋子
+        if (this.selectedSquare) {
+            const { row, col } = this.selectedSquare;
+            ctx.fillStyle = 'rgba(255, 255, 0, 0.3)';
+            ctx.fillRect(col * cell, row * cell, cell, cell);
+        }
+        
+        // 显示合法走法
+        if (this.selectedSquare) {
+            const { row, col } = this.selectedSquare;
+            const moves = this.getLegalMoves(row, col);
+            for (const move of moves) {
+                // 检查走法是否合法（不导致被将军）
+                const captured = this.board[move.toRow][move.toCol];
+                this.board[move.toRow][move.toCol] = this.board[move.fromRow][move.fromCol];
+                this.board[move.fromRow][move.fromCol] = null;
+                const inCheck = this.isInCheck(this.myColor);
+                this.board[move.fromRow][move.fromCol] = this.board[move.toRow][move.toCol];
+                this.board[move.toRow][move.toCol] = captured;
+                if (inCheck) continue;
+                
+                const x = move.toCol * cell + cell / 2;
+                const y = move.toRow * cell + cell / 2;
+                ctx.beginPath();
+                if (this.board[move.toRow][move.toCol]) {
+                    ctx.arc(x, y, cell / 2 - 4, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+                    ctx.lineWidth = 4;
+                    ctx.stroke();
+                } else {
+                    ctx.arc(x, y, 10, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                    ctx.fill();
+                }
             }
-            winModal.style.display = 'flex';
-            this.drawBoard();
+        }
+        
+        // 绘制棋子
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                const piece = this.board[row][col];
+                if (piece) {
+                    const x = col * cell + cell / 2;
+                    const y = row * cell + cell / 2;
+                    
+                    // 如果这个棋子正在被将军且是王，添加红色闪烁
+                    const isKing = piece.type === 'K' || piece.type === 'k';
+                    const isInCheckNow = this.inCheck && isKing && piece.color === this.currentTurn;
+                    
+                    ctx.font = 'bold 44px "Segoe UI", "Arial Unicode MS", sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    
+                    if (isInCheckNow) {
+                        ctx.shadowColor = 'rgba(255, 0, 0, 0.8)';
+                        ctx.shadowBlur = 30;
+                    } else {
+                        ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+                        ctx.shadowBlur = 10;
+                    }
+                    
+                    ctx.fillStyle = piece.color === 'white' ? '#ffffff' : '#1a1a1a';
+                    ctx.fillText(this.getPieceSymbol(piece), x, y);
+                    
+                    // 白色棋子加描边
+                    if (piece.color === 'white') {
+                        ctx.shadowBlur = 0;
+                        ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+                        ctx.lineWidth = 1;
+                        ctx.strokeText(this.getPieceSymbol(piece), x, y);
+                    }
+                    ctx.shadowBlur = 0;
+                }
+            }
+        }
+        
+        // 绘制动画棋子（在最上层）
+        for (const anim of this.animations) {
+            const pos = anim.getCurrentPosition();
+            const x = pos.x;
+            const y = pos.y;
+            const scale = pos.scale || 1;
+            
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(scale, scale);
+            ctx.font = 'bold 44px "Segoe UI", "Arial Unicode MS", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            ctx.shadowBlur = 20;
+            ctx.fillStyle = anim.color === 'white' ? '#ffffff' : '#1a1a1a';
+            ctx.fillText(this.getPieceSymbol(anim.piece), 0, 0);
+            ctx.shadowBlur = 0;
+            ctx.restore();
+        }
+        
+        // 如果将军提示打开，绘制红色高亮
+        if (checkModal.style.display !== 'none') {
+            const king = this.findKing(this.currentTurn);
+            if (king) {
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
+                ctx.fillRect(king.col * cell, king.row * cell, cell, cell);
+            }
+        }
+        
+        // 动画循环
+        let hasActiveAnimation = false;
+        for (const anim of this.animations) {
+            if (anim.active) {
+                hasActiveAnimation = true;
+                anim.update();
+            }
+        }
+        // 移除已完成的动画
+        this.animations = this.animations.filter(a => a.active);
+        
+        if (hasActiveAnimation) {
+            this.animationId = requestAnimationFrame(() => this.drawBoard());
+        } else {
+            if (this.animationId) {
+                cancelAnimationFrame(this.animationId);
+                this.animationId = null;
+            }
         }
     }
 
+    // ========== 点击处理 ==========
     handleClick(e) {
         if (this.gameOver || !this.gameStarted || this.myColor !== this.currentTurn) return;
         
@@ -862,9 +1126,8 @@ class ChessGame {
         const scale = size / rect.width;
         const x = (e.clientX - rect.left) * scale;
         const y = (e.clientY - rect.top) * scale;
-        const cellSize = size / 8;
-        const col = Math.floor(x / cellSize);
-        const row = Math.floor(y / cellSize);
+        const col = Math.floor(x / this.cellSize);
+        const row = Math.floor(y / this.cellSize);
         if (row < 0 || row > 7 || col < 0 || col > 7) return;
         
         const piece = this.board[row][col];
@@ -882,6 +1145,17 @@ class ChessGame {
             const moves = this.getLegalMoves(fromRow, fromCol);
             const move = moves.find(m => m.toRow === row && m.toCol === col);
             if (move) {
+                // 检查走法是否合法（不导致被将军）
+                const captured = this.board[move.toRow][move.toCol];
+                this.board[move.toRow][move.toCol] = this.board[move.fromRow][move.fromCol];
+                this.board[move.fromRow][move.fromCol] = null;
+                const inCheck = this.isInCheck(this.myColor);
+                this.board[move.fromRow][move.fromCol] = this.board[move.toRow][move.toCol];
+                this.board[move.toRow][move.toCol] = captured;
+                if (inCheck) {
+                    showToast('⚠️ 你的王会被将军！不能这样走！');
+                    return;
+                }
                 this.executeMove(move);
                 this.selectedSquare = null;
                 return;
@@ -905,27 +1179,14 @@ class ChessGame {
     }
 
     async executeMove(move) {
-        if (this.isAI && this.myColor === 'white') {
-            // 玩家走白棋，AI走黑棋
-            this.makeMove(move);
-            if (!this.gameOver) {
-                gameHint.textContent = '电脑思考中...';
-                setTimeout(() => this.aiMove(), 300);
-            }
-            return;
-        }
-        
         if (this.isAI) {
-            // AI模式，直接走棋
             this.makeMove(move);
             if (!this.gameOver) {
-                gameHint.textContent = '电脑思考中...';
-                setTimeout(() => this.aiMove(), 300);
+                setTimeout(() => this.aiMove(), 400);
             }
             return;
         }
         
-        // 在线模式
         try {
             const data = await api(`/api/rooms/${currentRoom.room_code}/move`, 'POST', {
                 fromRow: move.fromRow,
@@ -941,7 +1202,6 @@ class ChessGame {
     }
 
     syncFromServer(data) {
-        // 从服务器同步棋盘状态
         this.board = data.board_state;
         this.currentTurn = data.current_turn;
         this.moveHistory = data.move_history || [];
@@ -954,7 +1214,6 @@ class ChessGame {
         }
         
         this.updateMoveHistory();
-        this.updateTurnUI();
         
         if (data.game_over) {
             this.gameOver = true;
@@ -964,93 +1223,125 @@ class ChessGame {
             gameHint.textContent = '游戏结束';
             
             if (data.draw) {
-                winnerDisplay.textContent = '平局！';
-                winDescription.textContent = '和棋';
+                resultIcon.textContent = '🤝';
+                resultTitle.textContent = '和棋';
+                winnerDisplay.textContent = '和棋';
+                winDescription.textContent = `经过 ${this.moveCount} 步`;
             } else {
                 const winner = data.winner || '';
                 const isMe = currentUser && winner === currentUser.username;
-                winnerDisplay.textContent = isMe ? '你赢了！' : `对方获胜`;
+                resultIcon.textContent = isMe ? '👑' : '😢';
+                resultTitle.textContent = isMe ? '你赢了！' : '你输了';
+                winnerDisplay.textContent = `${winner} 获胜！`;
                 winDescription.textContent = `经过 ${this.moveCount} 步`;
             }
             winModal.style.display = 'flex';
         } else {
-            const isMyTurn = this.myColor === this.currentTurn;
-            gameHint.textContent = isMyTurn ? '轮到你了！' : '等待对方走棋...';
+            this.inCheck = this.isInCheck(this.currentTurn);
+            this.updateTurnUI();
         }
         this.drawBoard();
     }
 
-    // ========== AI（简化版，使用随机走法 + 简单评估） ==========
+    // ========== AI（简单但完整的走法） ==========
     aiMove() {
         if (this.gameOver || !this.isAI) return;
         
-        // 获取所有合法走法
         const allMoves = [];
         for (let r = 0; r < 8; r++) {
             for (let c = 0; c < 8; c++) {
                 const piece = this.board[r][c];
                 if (piece && piece.color === 'black') {
                     const moves = this.getLegalMoves(r, c);
-                    allMoves.push(...moves);
+                    for (const move of moves) {
+                        // 检查走法是否合法（不导致被将军）
+                        const captured = this.board[move.toRow][move.toCol];
+                        this.board[move.toRow][move.toCol] = this.board[move.fromRow][move.fromCol];
+                        this.board[move.fromRow][move.fromCol] = null;
+                        const inCheck = this.isInCheck('black');
+                        this.board[move.fromRow][move.fromCol] = this.board[move.toRow][move.toCol];
+                        this.board[move.toRow][move.toCol] = captured;
+                        if (!inCheck) {
+                            allMoves.push(move);
+                        }
+                    }
                 }
             }
         }
         
         if (allMoves.length === 0) {
-            // 没有合法走法，认输
-            this.gameOver = true;
-            this.stopTimer();
-            gameStatusDiv.textContent = '游戏结束';
-            gameStatusDiv.className = 'status-display win';
-            gameHint.textContent = '游戏结束';
-            winnerDisplay.textContent = '你赢了！';
-            winDescription.textContent = '电脑无棋可走';
-            winModal.style.display = 'flex';
-            this.drawBoard();
-            return;
+            // 没有合法走法
+            if (this.isInCheck('black')) {
+                // 将死
+                this.gameOver = true;
+                this.stopTimer();
+                gameStatusDiv.textContent = '将死！';
+                gameStatusDiv.className = 'status-display win';
+                gameHint.textContent = '你赢了！';
+                resultIcon.textContent = '👑';
+                resultTitle.textContent = '你赢了！';
+                winnerDisplay.textContent = '白方获胜！';
+                winDescription.textContent = `经过 ${this.moveCount} 步`;
+                winModal.style.display = 'flex';
+                this.drawBoard();
+                return;
+            } else {
+                // 逼和
+                this.gameOver = true;
+                this.stopTimer();
+                gameStatusDiv.textContent = '逼和';
+                gameStatusDiv.className = 'status-display win';
+                gameHint.textContent = '和棋';
+                resultIcon.textContent = '🤝';
+                resultTitle.textContent = '和棋';
+                winnerDisplay.textContent = '棋盘已满，无法走棋';
+                winDescription.textContent = `经过 ${this.moveCount} 步`;
+                winModal.style.display = 'flex';
+                this.drawBoard();
+                return;
+            }
         }
         
-        // 简单的走法评估：优先吃子
-        let bestMoves = [];
-        let bestScore = -Infinity;
-        
+        // 走法评估
         const pieceValues = {
-            'P': 1, 'p': 1,
-            'N': 3, 'n': 3,
-            'B': 3, 'b': 3,
-            'R': 5, 'r': 5,
-            'Q': 9, 'q': 9,
-            'K': 100, 'k': 100
+            'p': 1, 'P': 1,
+            'n': 3, 'N': 3,
+            'b': 3, 'B': 3,
+            'r': 5, 'R': 5,
+            'q': 9, 'Q': 9,
+            'k': 100, 'K': 100
         };
+        
+        let bestMove = null;
+        let bestScore = -Infinity;
         
         for (const move of allMoves) {
             let score = 0;
             const target = this.board[move.toRow][move.toCol];
             if (target) {
                 score += pieceValues[target.type] || 0;
+                // 吃子额外加分
+                score += 10;
             }
             // 中心偏好
             const centerDist = Math.abs(move.toCol - 3.5) + Math.abs(move.toRow - 3.5);
-            score += (7 - centerDist) * 0.5;
+            score += (7 - centerDist) * 2;
+            // 随机因素（让AI不那么死板）
+            score += Math.random() * 2;
             
             if (score > bestScore) {
                 bestScore = score;
-                bestMoves = [move];
-            } else if (score === bestScore) {
-                bestMoves.push(move);
+                bestMove = move;
             }
         }
         
-        const move = bestMoves[Math.floor(Math.random() * bestMoves.length)];
-        this.makeMove(move);
-        
-        if (!this.gameOver) {
-            gameHint.textContent = '轮到你了！';
+        if (bestMove) {
+            this.makeMove(bestMove);
+            if (!this.gameOver) {
+                this.updateTurnUI();
+            }
         }
     }
-
-    // ========== 在线走棋（用于人机模式以外的走法） ==========
-    // makeOnlineMove 由 executeMove 替代
 }
 
 // ========== 初始化 ==========
@@ -1070,3 +1361,6 @@ window.addEventListener('DOMContentLoaded', () => {
         showAuthModal();
     }
 });
+
+// 将 quickJoin 设为全局以便在 HTML 中使用
+window.quickJoin = quickJoin;
