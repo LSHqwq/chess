@@ -77,9 +77,6 @@ const resultTitle = document.getElementById('result-title');
 const winnerDisplay = document.getElementById('winner-display');
 const winDescription = document.getElementById('win-description');
 const modalRestartBtn = document.getElementById('modal-restart-btn');
-const checkModal = document.getElementById('check-modal');
-const checkMessage = document.getElementById('check-message');
-const checkModalBtn = document.getElementById('check-modal-btn');
 const gameTimeEl = document.getElementById('game-time');
 const moveCountEl = document.getElementById('move-count');
 const gameStatusDiv = document.getElementById('game-status');
@@ -157,7 +154,6 @@ function handleWSMessage(data) {
             
         case 'restart':
             winModal.style.display = 'none';
-            checkModal.style.display = 'none';
             game.reset(currentRoom);
             game.onGameStart();
             break;
@@ -454,7 +450,6 @@ restartBtn.addEventListener('click', async () => {
 
 modalRestartBtn.addEventListener('click', async () => {
     winModal.style.display = 'none';
-    checkModal.style.display = 'none';
     if (!currentRoom) return;
     if (game.isAI) {
         game.reset(currentRoom);
@@ -466,10 +461,6 @@ modalRestartBtn.addEventListener('click', async () => {
     } catch (err) {
         showToast('重启失败');
     }
-});
-
-checkModalBtn.addEventListener('click', () => {
-    checkModal.style.display = 'none';
 });
 
 drawBtn.addEventListener('click', async () => {
@@ -500,7 +491,6 @@ class PieceAnimation {
     update() {
         const elapsed = Date.now() - this.startTime;
         this.progress = Math.min(elapsed / this.duration, 1);
-        // 缓动函数 - easeOutCubic
         this.progress = 1 - Math.pow(1 - this.progress, 3);
         if (this.progress >= 1) {
             this.active = false;
@@ -585,13 +575,11 @@ class ChessGame {
         gameHint.textContent = '';
         gameHint.className = 'hint-text';
         winModal.style.display = 'none';
-        checkModal.style.display = 'none';
         turnIndicator.className = 'turn-display white-turn';
         currentPlayerText.textContent = '白棋走子';
-        whiteCard.classList.remove('in-check');
-        blackCard.classList.remove('in-check');
+        whiteCard.classList.remove('in-check', 'active-player');
+        blackCard.classList.remove('in-check', 'active-player');
         whiteCard.classList.add('active-player');
-        blackCard.classList.remove('active-player');
         
         if (roomData && roomData.status === 'waiting') {
             gameHint.textContent = '等待对手加入...';
@@ -672,15 +660,12 @@ class ChessGame {
             case 'P': {
                 const dir = color === 'white' ? 1 : -1;
                 const startRow = color === 'white' ? 1 : 6;
-                // 前进一步
                 if (fromRow + dir >= 0 && fromRow + dir < 8 && !this.board[fromRow + dir][fromCol]) {
                     moves.push({ fromRow, fromCol, toRow: fromRow + dir, toCol: fromCol });
-                    // 前进两步
                     if (fromRow === startRow && !this.board[fromRow + 2 * dir][fromCol]) {
                         moves.push({ fromRow, fromCol, toRow: fromRow + 2 * dir, toCol: fromCol });
                     }
                 }
-                // 吃子
                 for (const dc of [-1, 1]) {
                     const toRow = fromRow + dir, toCol = fromCol + dc;
                     if (toRow >= 0 && toRow < 8 && toCol >= 0 && toCol < 8) {
@@ -770,12 +755,12 @@ class ChessGame {
 
     isCheckmate(color) {
         if (!this.isInCheck(color)) return false;
-        return this.hasLegalMoves(color);
+        return !this.hasLegalMoves(color);
     }
 
     isStalemate(color) {
         if (this.isInCheck(color)) return false;
-        return this.hasLegalMoves(color);
+        return !this.hasLegalMoves(color);
     }
 
     hasLegalMoves(color) {
@@ -785,26 +770,82 @@ class ChessGame {
                 if (p && p.color === color) {
                     const moves = this.getLegalMoves(r, c);
                     for (const move of moves) {
-                        // 模拟走法检查是否解除将军
                         const captured = this.board[move.toRow][move.toCol];
                         this.board[move.toRow][move.toCol] = this.board[move.fromRow][move.fromCol];
                         this.board[move.fromRow][move.fromCol] = null;
                         const inCheck = this.isInCheck(color);
                         this.board[move.fromRow][move.fromCol] = this.board[move.toRow][move.toCol];
                         this.board[move.toRow][move.toCol] = captured;
-                        if (!inCheck) return false;
+                        if (!inCheck) return true;
                     }
                 }
             }
         }
-        return true;
+        return false;
+    }
+
+    // ========== 兵升变 ==========
+    showPromotionDialog(color) {
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;justify-content:center;align-items:center;z-index:3000;backdrop-filter:blur(4px);';
+            
+            const dialog = document.createElement('div');
+            dialog.style.cssText = 'background:#16213e;border-radius:18px;padding:30px;text-align:center;min-width:320px;border:1px solid rgba(255,255,255,0.1);';
+            dialog.innerHTML = `
+                <h3 style="color:#e2e8f0;margin-bottom:16px;font-size:20px;">兵升变</h3>
+                <p style="color:#a0aec0;margin-bottom:20px;">选择升变的棋子：</p>
+                <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+                    <button class="promotion-btn" data-piece="Q" style="font-size:36px;padding:10px 16px;border:2px solid transparent;border-radius:10px;cursor:pointer;transition:all 0.2s;width:60px;height:60px;display:flex;align-items:center;justify-content:center;background:${color === 'white' ? '#ffffff' : '#1a1a1a'};border-radius:10px;box-shadow:0 4px 12px rgba(0,0,0,0.3);color:${color === 'white' ? '#1a1a1a' : '#ffffff'};">
+                        ${color === 'white' ? '♕' : '♛'}
+                    </button>
+                    <button class="promotion-btn" data-piece="R" style="font-size:36px;padding:10px 16px;border:2px solid transparent;border-radius:10px;cursor:pointer;transition:all 0.2s;width:60px;height:60px;display:flex;align-items:center;justify-content:center;background:${color === 'white' ? '#ffffff' : '#1a1a1a'};border-radius:10px;box-shadow:0 4px 12px rgba(0,0,0,0.3);color:${color === 'white' ? '#1a1a1a' : '#ffffff'};">
+                        ${color === 'white' ? '♖' : '♜'}
+                    </button>
+                    <button class="promotion-btn" data-piece="B" style="font-size:36px;padding:10px 16px;border:2px solid transparent;border-radius:10px;cursor:pointer;transition:all 0.2s;width:60px;height:60px;display:flex;align-items:center;justify-content:center;background:${color === 'white' ? '#ffffff' : '#1a1a1a'};border-radius:10px;box-shadow:0 4px 12px rgba(0,0,0,0.3);color:${color === 'white' ? '#1a1a1a' : '#ffffff'};">
+                        ${color === 'white' ? '♗' : '♝'}
+                    </button>
+                    <button class="promotion-btn" data-piece="N" style="font-size:36px;padding:10px 16px;border:2px solid transparent;border-radius:10px;cursor:pointer;transition:all 0.2s;width:60px;height:60px;display:flex;align-items:center;justify-content:center;background:${color === 'white' ? '#ffffff' : '#1a1a1a'};border-radius:10px;box-shadow:0 4px 12px rgba(0,0,0,0.3);color:${color === 'white' ? '#1a1a1a' : '#ffffff'};">
+                        ${color === 'white' ? '♘' : '♞'}
+                    </button>
+                </div>
+            `;
+            
+            overlay.appendChild(dialog);
+            document.body.appendChild(overlay);
+            
+            document.querySelectorAll('.promotion-btn').forEach(btn => {
+                btn.addEventListener('mouseenter', () => {
+                    btn.style.borderColor = '#667eea';
+                    btn.style.transform = 'scale(1.1)';
+                });
+                btn.addEventListener('mouseleave', () => {
+                    btn.style.borderColor = 'transparent';
+                    btn.style.transform = 'scale(1)';
+                });
+                btn.addEventListener('click', () => {
+                    const pieceType = btn.dataset.piece;
+                    overlay.remove();
+                    resolve(pieceType);
+                });
+            });
+        });
     }
 
     // ========== 执行走法 ==========
-    makeMove(move, animate = true) {
+    async makeMove(move, animate = true) {
         const { fromRow, fromCol, toRow, toCol } = move;
         const piece = this.board[fromRow][fromCol];
         const captured = this.board[toRow][toCol];
+        
+        // 检测兵升变
+        let promotionPiece = null;
+        if (piece && (piece.type === 'P' || piece.type === 'p')) {
+            const isPromotion = (piece.color === 'white' && toRow === 7) || (piece.color === 'black' && toRow === 0);
+            if (isPromotion) {
+                promotionPiece = await this.showPromotionDialog(piece.color);
+            }
+        }
         
         // 创建动画
         if (animate) {
@@ -813,27 +854,31 @@ class ChessGame {
             const toX = toCol * this.cellSize + this.cellSize / 2;
             const toY = toRow * this.cellSize + this.cellSize / 2;
             this.animations.push(new PieceAnimation(fromX, fromY, toX, toY, piece, piece.color));
-            
-            // 如果有吃子，添加闪烁效果
-            if (captured) {
-                // 在吃子位置添加一个消失动画
-            }
         }
         
-        this.moveHistory.push({
+        // 记录走法
+        const moveRecord = {
             fromRow, fromCol, toRow, toCol,
             piece: piece,
-            captured: captured
-        });
+            captured: captured,
+            promotion: promotionPiece
+        };
+        this.moveHistory.push(moveRecord);
         
-        this.board[toRow][toCol] = piece;
+        // 执行走法
+        if (promotionPiece) {
+            const newType = piece.color === 'white' ? promotionPiece : promotionPiece.toLowerCase();
+            this.board[toRow][toCol] = { type: newType, color: piece.color };
+        } else {
+            this.board[toRow][toCol] = piece;
+        }
         this.board[fromRow][fromCol] = null;
+        
         this.lastMove = { fromRow, fromCol, toRow, toCol };
         this.currentTurn = this.currentTurn === 'white' ? 'black' : 'white';
         this.moveCount = this.moveHistory.length;
         moveCountEl.textContent = this.moveCount;
         
-        // 更新走法记录
         this.updateMoveHistory();
         this.updateTurnUI();
         
@@ -842,28 +887,57 @@ class ChessGame {
         this.inCheck = inCheck;
         
         if (inCheck) {
-            // 检测是否将死
             if (this.isCheckmate(this.currentTurn)) {
-                // 将死！
                 this.gameOver = true;
                 this.stopTimer();
-                const winner = this.currentTurn === 'white' ? '黑方' : '白方';
+                
+                const isPlayerInCheckmate = this.myColor === this.currentTurn;
+                const isAIInCheckmate = this.isAI && this.currentTurn === 'black';
+                
                 gameStatusDiv.textContent = '将死！';
-                gameStatusDiv.className = 'status-display win';
-                gameHint.textContent = `${winner}胜！`;
-                resultIcon.textContent = '👑';
-                resultTitle.textContent = '将死！';
-                winnerDisplay.textContent = `${winner}获胜！`;
-                winDescription.textContent = `经过 ${this.moveCount} 步`;
+                gameHint.textContent = '游戏结束';
+                
+                if (isPlayerInCheckmate) {
+                    resultIcon.textContent = '😢';
+                    resultTitle.textContent = '你输了！';
+                    winnerDisplay.textContent = '你被将杀了！';
+                    winDescription.textContent = `经过 ${this.moveCount} 步`;
+                    gameStatusDiv.className = 'status-display lose';
+                    gameHint.textContent = '你被将杀了！';
+                } else if (isAIInCheckmate) {
+                    resultIcon.textContent = '👑';
+                    resultTitle.textContent = '你赢了！';
+                    winnerDisplay.textContent = '你将杀了电脑！';
+                    winDescription.textContent = `经过 ${this.moveCount} 步`;
+                    gameStatusDiv.className = 'status-display win';
+                    gameHint.textContent = '你将杀了电脑！';
+                } else {
+                    const isMe = (this.currentTurn === 'white' && this.myColor === 'black') || 
+                                (this.currentTurn === 'black' && this.myColor === 'white');
+                    if (isMe) {
+                        resultIcon.textContent = '👑';
+                        resultTitle.textContent = '你赢了！';
+                        winnerDisplay.textContent = '你将杀了对方！';
+                        gameStatusDiv.className = 'status-display win';
+                        gameHint.textContent = '你将杀了对方！';
+                    } else {
+                        resultIcon.textContent = '😢';
+                        resultTitle.textContent = '你输了！';
+                        winnerDisplay.textContent = '你被将杀了！';
+                        gameStatusDiv.className = 'status-display lose';
+                        gameHint.textContent = '你被将杀了！';
+                    }
+                    winDescription.textContent = `经过 ${this.moveCount} 步`;
+                }
+                
                 winModal.style.display = 'flex';
                 this.drawBoard();
                 return;
             }
             
-            // 显示将军提示
+            // 将军提示（只给被将军的一方显示）
             this.showCheckAlert(this.currentTurn);
         } else {
-            // 检测逼和
             if (this.isStalemate(this.currentTurn)) {
                 this.gameOver = true;
                 this.stopTimer();
@@ -871,52 +945,65 @@ class ChessGame {
                 gameStatusDiv.className = 'status-display win';
                 gameHint.textContent = '和棋';
                 resultIcon.textContent = '🤝';
-                resultTitle.textContent = '逼和';
+                resultTitle.textContent = '和棋';
                 winnerDisplay.textContent = '棋盘已满，无法走棋';
                 winDescription.textContent = `经过 ${this.moveCount} 步`;
                 winModal.style.display = 'flex';
                 this.drawBoard();
                 return;
             }
+            // 没有将军时清除将军状态显示
+            if (this.inCheck) {
+                this.inCheck = false;
+                this.updateTurnUI();
+            }
         }
         
-        // 检测吃子动画
         this.drawBoard();
     }
 
     showCheckAlert(color) {
-        const playerName = color === 'white' ? '白方' : '黑方';
-        checkMessage.textContent = `${playerName}的王被将军了！必须立刻解围！`;
-        checkModal.style.display = 'flex';
-        gameStatusDiv.textContent = '将军！';
-        gameStatusDiv.className = 'status-display check';
-        gameHint.textContent = `${playerName}被将军！`;
-        gameHint.className = 'hint-text check';
+        const isMe = this.myColor === color;
         
-        // 高亮显示王的格子
-        const king = this.findKing(color);
-        if (king) {
-            // 在王的格子上显示红色高亮
-            this.drawBoard();
-            const ctx = this.ctx;
-            const x = king.col * this.cellSize;
-            const y = king.row * this.cellSize;
-            ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
-            ctx.fillRect(x, y, this.cellSize, this.cellSize);
-            // 重新绘制棋子
-            const piece = this.board[king.row][king.col];
-            if (piece) {
-                const cx = x + this.cellSize / 2;
-                const cy = y + this.cellSize / 2;
-                ctx.font = 'bold 44px "Segoe UI", "Arial Unicode MS", sans-serif';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.shadowColor = 'rgba(255,0,0,0.5)';
-                ctx.shadowBlur = 20;
-                ctx.fillStyle = piece.color === 'white' ? '#ffffff' : '#1a1a1a';
-                ctx.fillText(this.getPieceSymbol(piece), cx, cy);
-                ctx.shadowBlur = 0;
+        gameStatusDiv.textContent = '⚡ 将军！';
+        gameStatusDiv.className = 'status-display check';
+        
+        if (isMe) {
+            gameHint.textContent = '⚠️ 你的王被将军了！必须立刻解围！';
+            gameHint.className = 'hint-text check';
+            turnIndicator.className += ' check';
+            
+            const king = this.findKing(color);
+            if (king) {
+                this.drawBoard();
+                const ctx = this.ctx;
+                const x = king.col * this.cellSize;
+                const y = king.row * this.cellSize;
+                
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.25)';
+                ctx.fillRect(x, y, this.cellSize, this.cellSize);
+                ctx.strokeStyle = 'rgba(255, 0, 0, 0.6)';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(x + 2, y + 2, this.cellSize - 4, this.cellSize - 4);
+                
+                const piece = this.board[king.row][king.col];
+                if (piece) {
+                    const cx = x + this.cellSize / 2;
+                    const cy = y + this.cellSize / 2;
+                    ctx.font = 'bold 44px "Segoe UI", "Arial Unicode MS", sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.shadowColor = 'rgba(255,0,0,0.6)';
+                    ctx.shadowBlur = 30;
+                    ctx.fillStyle = piece.color === 'white' ? '#ffffff' : '#1a1a1a';
+                    ctx.fillText(this.getPieceSymbol(piece), cx, cy);
+                    ctx.shadowBlur = 0;
+                }
             }
+        } else {
+            const playerName = color === 'white' ? '白方' : '黑方';
+            gameHint.textContent = `${playerName}被将军`;
+            gameHint.className = 'hint-text';
         }
     }
 
@@ -932,7 +1019,8 @@ class ChessGame {
             const pieceSymbol = this.getPieceSymbol(move.piece);
             const capture = move.captured ? 'x' : '-';
             const prefix = index % 2 === 0 ? `${moveNum}.` : '';
-            item.textContent = `${prefix} ${pieceSymbol}${from}${capture}${to}`;
+            const promo = move.promotion ? `=${move.promotion}` : '';
+            item.textContent = `${prefix} ${pieceSymbol}${from}${capture}${to}${promo}`;
             listEl.appendChild(item);
         });
         listEl.scrollTop = listEl.scrollHeight;
@@ -941,25 +1029,39 @@ class ChessGame {
     updateTurnUI() {
         const isWhiteTurn = this.currentTurn === 'white';
         turnIndicator.className = 'turn-display ' + (isWhiteTurn ? 'white-turn' : 'black-turn');
-        if (this.inCheck) {
-            turnIndicator.className += ' check';
-        }
         currentPlayerText.textContent = isWhiteTurn ? '白棋走子' : '黑棋走子';
         
         whiteCard.classList.toggle('active-player', isWhiteTurn);
         blackCard.classList.toggle('active-player', !isWhiteTurn);
         
-        whiteCard.classList.toggle('in-check', this.inCheck && this.currentTurn === 'white');
-        blackCard.classList.toggle('in-check', this.inCheck && this.currentTurn === 'black');
+        const isMeInCheck = this.inCheck && this.myColor === this.currentTurn;
+        whiteCard.classList.toggle('in-check', isMeInCheck && this.currentTurn === 'white');
+        blackCard.classList.toggle('in-check', isMeInCheck && this.currentTurn === 'black');
+        
+        if (this.inCheck) {
+            turnIndicator.className += ' check';
+        }
         
         if (this.gameStarted && !this.gameOver) {
             const isMyTurn = this.myColor === this.currentTurn;
             if (this.inCheck) {
-                gameHint.textContent = isMyTurn ? '⚠️ 你的王被将军了！必须解围！' : '对方王被将军！';
-                gameHint.className = 'hint-text check';
+                if (isMyTurn) {
+                    gameHint.textContent = '⚠️ 你的王被将军了！必须解围！';
+                    gameHint.className = 'hint-text check';
+                    gameStatusDiv.textContent = '⚡ 将军！';
+                    gameStatusDiv.className = 'status-display check';
+                } else {
+                    const playerName = this.currentTurn === 'white' ? '白方' : '黑方';
+                    gameHint.textContent = `${playerName}被将军`;
+                    gameHint.className = 'hint-text';
+                    gameStatusDiv.textContent = '将军！';
+                    gameStatusDiv.className = 'status-display';
+                }
             } else {
                 gameHint.textContent = isMyTurn ? '轮到你了！' : '等待对方走棋...';
                 gameHint.className = 'hint-text';
+                gameStatusDiv.textContent = '游戏进行中';
+                gameStatusDiv.className = 'status-display';
             }
         }
     }
@@ -972,14 +1074,12 @@ class ChessGame {
         
         ctx.clearRect(0, 0, size, size);
         
-        // 绘制棋盘
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
                 const isLight = (row + col) % 2 === 0;
                 ctx.fillStyle = isLight ? '#f0d9b5' : '#b58863';
                 ctx.fillRect(col * cell, row * cell, cell, cell);
                 
-                // 标记最后一步
                 if (this.lastMove) {
                     if ((row === this.lastMove.fromRow && col === this.lastMove.fromCol) ||
                         (row === this.lastMove.toRow && col === this.lastMove.toCol)) {
@@ -990,19 +1090,16 @@ class ChessGame {
             }
         }
         
-        // 高亮选中的棋子
         if (this.selectedSquare) {
             const { row, col } = this.selectedSquare;
             ctx.fillStyle = 'rgba(255, 255, 0, 0.3)';
             ctx.fillRect(col * cell, row * cell, cell, cell);
         }
         
-        // 显示合法走法
         if (this.selectedSquare) {
             const { row, col } = this.selectedSquare;
             const moves = this.getLegalMoves(row, col);
             for (const move of moves) {
-                // 检查走法是否合法（不导致被将军）
                 const captured = this.board[move.toRow][move.toCol];
                 this.board[move.toRow][move.toCol] = this.board[move.fromRow][move.fromCol];
                 this.board[move.fromRow][move.fromCol] = null;
@@ -1027,7 +1124,6 @@ class ChessGame {
             }
         }
         
-        // 绘制棋子
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
                 const piece = this.board[row][col];
@@ -1035,9 +1131,9 @@ class ChessGame {
                     const x = col * cell + cell / 2;
                     const y = row * cell + cell / 2;
                     
-                    // 如果这个棋子正在被将军且是王，添加红色闪烁
                     const isKing = piece.type === 'K' || piece.type === 'k';
-                    const isInCheckNow = this.inCheck && isKing && piece.color === this.currentTurn;
+                    const isMeInCheck = this.inCheck && this.myColor === this.currentTurn;
+                    const isInCheckNow = isMeInCheck && isKing && piece.color === this.currentTurn;
                     
                     ctx.font = 'bold 44px "Segoe UI", "Arial Unicode MS", sans-serif';
                     ctx.textAlign = 'center';
@@ -1054,7 +1150,6 @@ class ChessGame {
                     ctx.fillStyle = piece.color === 'white' ? '#ffffff' : '#1a1a1a';
                     ctx.fillText(this.getPieceSymbol(piece), x, y);
                     
-                    // 白色棋子加描边
                     if (piece.color === 'white') {
                         ctx.shadowBlur = 0;
                         ctx.strokeStyle = 'rgba(0,0,0,0.2)';
@@ -1066,7 +1161,6 @@ class ChessGame {
             }
         }
         
-        // 绘制动画棋子（在最上层）
         for (const anim of this.animations) {
             const pos = anim.getCurrentPosition();
             const x = pos.x;
@@ -1087,16 +1181,6 @@ class ChessGame {
             ctx.restore();
         }
         
-        // 如果将军提示打开，绘制红色高亮
-        if (checkModal.style.display !== 'none') {
-            const king = this.findKing(this.currentTurn);
-            if (king) {
-                ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
-                ctx.fillRect(king.col * cell, king.row * cell, cell, cell);
-            }
-        }
-        
-        // 动画循环
         let hasActiveAnimation = false;
         for (const anim of this.animations) {
             if (anim.active) {
@@ -1104,7 +1188,6 @@ class ChessGame {
                 anim.update();
             }
         }
-        // 移除已完成的动画
         this.animations = this.animations.filter(a => a.active);
         
         if (hasActiveAnimation) {
@@ -1145,7 +1228,6 @@ class ChessGame {
             const moves = this.getLegalMoves(fromRow, fromCol);
             const move = moves.find(m => m.toRow === row && m.toCol === col);
             if (move) {
-                // 检查走法是否合法（不导致被将军）
                 const captured = this.board[move.toRow][move.toCol];
                 this.board[move.toRow][move.toCol] = this.board[move.fromRow][move.fromCol];
                 this.board[move.fromRow][move.fromCol] = null;
@@ -1180,7 +1262,7 @@ class ChessGame {
 
     async executeMove(move) {
         if (this.isAI) {
-            this.makeMove(move);
+            await this.makeMove(move);
             if (!this.gameOver) {
                 setTimeout(() => this.aiMove(), 400);
             }
@@ -1219,31 +1301,47 @@ class ChessGame {
             this.gameOver = true;
             this.stopTimer();
             gameStatusDiv.textContent = '游戏结束';
-            gameStatusDiv.className = 'status-display win';
             gameHint.textContent = '游戏结束';
             
             if (data.draw) {
+                gameStatusDiv.className = 'status-display win';
                 resultIcon.textContent = '🤝';
                 resultTitle.textContent = '和棋';
                 winnerDisplay.textContent = '和棋';
                 winDescription.textContent = `经过 ${this.moveCount} 步`;
+                gameHint.textContent = '和棋';
             } else {
                 const winner = data.winner || '';
                 const isMe = currentUser && winner === currentUser.username;
-                resultIcon.textContent = isMe ? '👑' : '😢';
-                resultTitle.textContent = isMe ? '你赢了！' : '你输了';
-                winnerDisplay.textContent = `${winner} 获胜！`;
+                
+                if (isMe) {
+                    resultIcon.textContent = '👑';
+                    resultTitle.textContent = '你赢了！';
+                    winnerDisplay.textContent = '你将杀了对方！';
+                    gameStatusDiv.className = 'status-display win';
+                    gameHint.textContent = '你将杀了对方！';
+                } else {
+                    resultIcon.textContent = '😢';
+                    resultTitle.textContent = '你输了！';
+                    winnerDisplay.textContent = '你被将杀了！';
+                    gameStatusDiv.className = 'status-display lose';
+                    gameHint.textContent = '你被将杀了！';
+                }
                 winDescription.textContent = `经过 ${this.moveCount} 步`;
             }
             winModal.style.display = 'flex';
         } else {
             this.inCheck = this.isInCheck(this.currentTurn);
-            this.updateTurnUI();
+            if (this.inCheck) {
+                this.showCheckAlert(this.currentTurn);
+            } else {
+                this.updateTurnUI();
+            }
         }
         this.drawBoard();
     }
 
-    // ========== AI（简单但完整的走法） ==========
+    // ========== AI ==========
     aiMove() {
         if (this.gameOver || !this.isAI) return;
         
@@ -1254,7 +1352,6 @@ class ChessGame {
                 if (piece && piece.color === 'black') {
                     const moves = this.getLegalMoves(r, c);
                     for (const move of moves) {
-                        // 检查走法是否合法（不导致被将军）
                         const captured = this.board[move.toRow][move.toCol];
                         this.board[move.toRow][move.toCol] = this.board[move.fromRow][move.fromCol];
                         this.board[move.fromRow][move.fromCol] = null;
@@ -1270,9 +1367,7 @@ class ChessGame {
         }
         
         if (allMoves.length === 0) {
-            // 没有合法走法
             if (this.isInCheck('black')) {
-                // 将死
                 this.gameOver = true;
                 this.stopTimer();
                 gameStatusDiv.textContent = '将死！';
@@ -1280,13 +1375,12 @@ class ChessGame {
                 gameHint.textContent = '你赢了！';
                 resultIcon.textContent = '👑';
                 resultTitle.textContent = '你赢了！';
-                winnerDisplay.textContent = '白方获胜！';
+                winnerDisplay.textContent = '你将杀了电脑！';
                 winDescription.textContent = `经过 ${this.moveCount} 步`;
                 winModal.style.display = 'flex';
                 this.drawBoard();
                 return;
             } else {
-                // 逼和
                 this.gameOver = true;
                 this.stopTimer();
                 gameStatusDiv.textContent = '逼和';
@@ -1302,7 +1396,6 @@ class ChessGame {
             }
         }
         
-        // 走法评估
         const pieceValues = {
             'p': 1, 'P': 1,
             'n': 3, 'N': 3,
@@ -1320,14 +1413,19 @@ class ChessGame {
             const target = this.board[move.toRow][move.toCol];
             if (target) {
                 score += pieceValues[target.type] || 0;
-                // 吃子额外加分
                 score += 10;
             }
-            // 中心偏好
             const centerDist = Math.abs(move.toCol - 3.5) + Math.abs(move.toRow - 3.5);
             score += (7 - centerDist) * 2;
-            // 随机因素（让AI不那么死板）
             score += Math.random() * 2;
+            
+            // 兵升变优先
+            const piece = this.board[move.fromRow][move.fromCol];
+            if (piece && (piece.type === 'p' || piece.type === 'P')) {
+                if ((piece.color === 'white' && move.toRow === 7) || (piece.color === 'black' && move.toRow === 0)) {
+                    score += 20;
+                }
+            }
             
             if (score > bestScore) {
                 bestScore = score;
@@ -1362,5 +1460,4 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// 将 quickJoin 设为全局以便在 HTML 中使用
 window.quickJoin = quickJoin;
