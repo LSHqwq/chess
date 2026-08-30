@@ -697,8 +697,8 @@ class ChessGame {
         
         switch (type) {
             case 'P': {
-                const dir = color === 'white' ? -1 : 1;
-                const startRow = color === 'white' ? 6 : 1;
+                const dir = color === 'white' ? 1 : -1;
+                const startRow = color === 'white' ? 1 : 6;
                 // 前进一步
                 if (fromRow + dir >= 0 && fromRow + dir < 8 && !this.board[fromRow + dir][fromCol]) {
                     moves.push({ fromRow, fromCol, toRow: fromRow + dir, toCol: fromCol });
