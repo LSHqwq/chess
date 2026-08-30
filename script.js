@@ -142,9 +142,14 @@ function handleWSMessage(data) {
         case 'player_joined':
             if (currentRoom && currentRoom.status === 'waiting') {
                 currentRoom.status = 'playing';
-                game.myColor = 'white';
-                game.onGameStart();
+                if (data.white_player) currentRoom.white_player = data.white_player;
+                if (data.black_player) currentRoom.black_player = data.black_player;
                 updatePlayerNames();
+                
+                if (game.myColor === 'white') {
+                    game.onGameStart();
+                    game.updateTurnUI();
+                }
             }
             break;
             
@@ -312,7 +317,7 @@ async function quickJoin(code) {
         };
         showGameRoom();
         game.isAI = false;
-        game.myColor = 'white';
+        game.myColor = 'black';
         game.onGameStart();
         connectWebSocket(currentRoom.room_code);
     } catch (err) {
@@ -367,7 +372,7 @@ joinRoomBtn.addEventListener('click', async () => {
         };
         showGameRoom();
         game.isAI = false;
-        game.myColor = 'white';
+        game.myColor = 'black';
         game.onGameStart();
         connectWebSocket(currentRoom.room_code);
     } catch (err) {
@@ -584,6 +589,14 @@ class ChessGame {
         if (roomData && roomData.status === 'waiting') {
             gameHint.textContent = '等待对手加入...';
             gameStatusDiv.textContent = '等待中';
+        } else if (roomData && roomData.status === 'playing') {
+            if (this.myColor === 'white') {
+                gameHint.textContent = '你执白棋，等待黑棋落子';
+            } else {
+                gameHint.textContent = '你执黑棋，等待白棋落子';
+            }
+            gameStatusDiv.textContent = '游戏进行中';
+            gameStatusDiv.className = 'status-display';
         }
         this.drawBoard();
     }
@@ -595,6 +608,11 @@ class ChessGame {
         this.startTimer();
         gameStatusDiv.textContent = '游戏进行中';
         gameStatusDiv.className = 'status-display';
+        if (this.myColor === 'white') {
+            gameHint.textContent = '你执白棋，等待黑棋落子';
+        } else {
+            gameHint.textContent = '你执黑棋，等待白棋落子';
+        }
         this.updateTurnUI();
     }
 
@@ -945,8 +963,8 @@ class ChessGame {
                 gameStatusDiv.className = 'status-display win';
                 gameHint.textContent = '和棋';
                 resultIcon.textContent = '🤝';
-                resultTitle.textContent = '和棋';
-                winnerDisplay.textContent = '棋盘已满，无法走棋';
+                resultTitle.textContent = '逼和';
+                winnerDisplay.textContent = '对方无子可走，逼和！';
                 winDescription.textContent = `经过 ${this.moveCount} 步`;
                 winModal.style.display = 'flex';
                 this.drawBoard();
@@ -1307,7 +1325,7 @@ class ChessGame {
                 gameStatusDiv.className = 'status-display win';
                 resultIcon.textContent = '🤝';
                 resultTitle.textContent = '和棋';
-                winnerDisplay.textContent = '和棋';
+                winnerDisplay.textContent = '双方同意和棋';
                 winDescription.textContent = `经过 ${this.moveCount} 步`;
                 gameHint.textContent = '和棋';
             } else {
@@ -1336,6 +1354,14 @@ class ChessGame {
                 this.showCheckAlert(this.currentTurn);
             } else {
                 this.updateTurnUI();
+            }
+            const isMyTurn = this.myColor === this.currentTurn;
+            if (isMyTurn) {
+                gameHint.textContent = '轮到你了！';
+                gameHint.className = 'hint-text';
+            } else {
+                gameHint.textContent = '等待对方走棋...';
+                gameHint.className = 'hint-text';
             }
         }
         this.drawBoard();
@@ -1387,8 +1413,8 @@ class ChessGame {
                 gameStatusDiv.className = 'status-display win';
                 gameHint.textContent = '和棋';
                 resultIcon.textContent = '🤝';
-                resultTitle.textContent = '和棋';
-                winnerDisplay.textContent = '棋盘已满，无法走棋';
+                resultTitle.textContent = '逼和';
+                winnerDisplay.textContent = '电脑无子可走，逼和！';
                 winDescription.textContent = `经过 ${this.moveCount} 步`;
                 winModal.style.display = 'flex';
                 this.drawBoard();
@@ -1419,7 +1445,6 @@ class ChessGame {
             score += (7 - centerDist) * 2;
             score += Math.random() * 2;
             
-            // 兵升变优先
             const piece = this.board[move.fromRow][move.fromCol];
             if (piece && (piece.type === 'p' || piece.type === 'P')) {
                 if ((piece.color === 'white' && move.toRow === 7) || (piece.color === 'black' && move.toRow === 0)) {
