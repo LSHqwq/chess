@@ -1,5 +1,5 @@
-const API_BASE = 'https://chess.lshserver.dpdns.org:3001';  // 改为 3001 端口
-const WS_BASE = 'wss://chess.lshserver.dpdns.org:3001/ws';  // 改为 3001 端口
+const API_BASE = 'https://gjxq.lshserver.dpdns.org';  // 改为 3001 端口
+const WS_BASE = 'wss://gjxq.lshserver.dpdns.org/ws';  // 改为 3001 端口
 let authToken = localStorage.getItem('chess_token') || '';
 let currentUser = null;
 let currentRoom = null;
