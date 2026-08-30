@@ -5,46 +5,154 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>国际象棋 - 在线对战</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="icon" href="https://www.google.com/s2/favicons?domain=chess.com">
 </head>
 <body>
-    <div id="app">
-        <header>
-            <h1>♚ 国际象棋</h1>
-            <div id="game-status">等待开始...</div>
-            <div id="player-info">
-                <span id="player-color">你: 白棋</span>
-                <span id="opponent-status">对手: 未连接</span>
-            </div>
-        </header>
-        
-        <main>
-            <div id="board-container">
-                <div id="chess-board"></div>
-            </div>
-            
-            <div id="controls">
-                <button id="btn-new-game">新游戏</button>
-                <button id="btn-resign">认输</button>
-                <button id="btn-draw">提和</button>
-                <button id="btn-undo">悔棋</button>
-            </div>
-            
-            <div id="move-history">
-                <h3>走法记录</h3>
-                <div id="moves-list"></div>
-            </div>
-        </main>
-        
-        <div id="modal" class="hidden">
-            <div id="modal-content">
-                <h2 id="modal-title">游戏结束</h2>
-                <p id="modal-message">白方胜!</p>
-                <button id="modal-btn">确定</button>
+    <!-- 登录/注册弹窗 -->
+    <div id="auth-modal" class="modal-overlay">
+        <div class="modal-dialog auth-dialog">
+            <h2 id="auth-title">登录</h2>
+            <div class="auth-form">
+                <input id="auth-username" type="text" placeholder="用户名" class="auth-input">
+                <input id="auth-password" type="password" placeholder="密码" class="auth-input">
+                <button id="auth-submit-btn" class="game-btn restart-btn">登录</button>
+                <p class="auth-switch">
+                    <span id="auth-switch-text">没有账号？</span>
+                    <a id="auth-switch-link" href="#">注册</a>
+                </p>
+                <p id="auth-error" class="auth-error"></p>
             </div>
         </div>
     </div>
-    
+
+    <!-- 大厅界面 -->
+    <div id="lobby" class="container" style="display: none;">
+        <div class="lobby-panel">
+            <div class="game-logo">
+                <h1>♚ 国际象棋</h1>
+                <p class="subtitle">Chess Online</p>
+            </div>
+            
+            <div id="user-info" class="user-card">
+                <span id="display-username">未登录</span>
+                <span id="user-stats" style="font-size:12px;color:var(--text-dim);"></span>
+                <button id="logout-btn" class="game-btn undo-btn" style="display:none;">退出</button>
+            </div>
+            
+            <!-- 房间列表 -->
+            <div class="room-list-card">
+                <h3>可加入的房间</h3>
+                <div id="room-list" class="room-list">
+                    <p class="room-empty">暂无可用房间</p>
+                </div>
+                <button id="refresh-rooms-btn" class="game-btn undo-btn" style="width:100%;margin-top:8px;">刷新列表</button>
+            </div>
+
+            <div class="lobby-actions">
+                <button id="ai-play-btn" class="game-btn restart-btn" style="background: linear-gradient(135deg, #48bb78, #38a169);">人机对战</button>
+                <button id="create-room-btn" class="game-btn restart-btn">创建房间</button>
+                <div class="join-room-area">
+                    <input id="join-room-input" type="text" placeholder="输入房间号" class="auth-input" maxlength="6">
+                    <button id="join-room-btn" class="game-btn undo-btn">加入</button>
+                </div>
+                <p id="lobby-error" class="auth-error"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 游戏界面 -->
+    <div id="game-room" class="container" style="display: none;">
+        <div class="left-panel">
+            <div class="game-logo">
+                <h1>♚ 国际象棋</h1>
+                <p id="room-code-display" class="subtitle"></p>
+            </div>
+
+            <div class="turn-card">
+                <div id="turn-indicator" class="turn-display white-turn">
+                    <div class="piece-preview"></div>
+                    <div class="turn-info">
+                        <span class="turn-label">当前回合</span>
+                        <span id="current-player-text" class="turn-text">白棋走子</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-card">
+                <div class="stat-item">
+                    <span class="stat-label">步数</span>
+                    <span id="move-count" class="stat-value">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">用时</span>
+                    <span id="game-time" class="stat-value">00:00</span>
+                </div>
+            </div>
+
+            <div class="action-card">
+                <button id="restart-btn" class="game-btn restart-btn">
+                    <span>新游戏</span>
+                </button>
+                <button id="draw-btn" class="game-btn undo-btn">
+                    <span>求和</span>
+                </button>
+                <button id="leave-room-btn" class="game-btn undo-btn" style="background:#e53e3e;">
+                    <span>离开房间</span>
+                </button>
+            </div>
+
+            <div id="game-status" class="status-display">游戏进行中</div>
+        </div>
+
+        <div class="board-panel">
+            <div class="board-wrapper">
+                <canvas id="board" width="600" height="600"></canvas>
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <div id="white-player-card" class="player-card white-card active-player">
+                <div class="player-header">
+                    <div class="player-piece white-piece"></div>
+                    <h3>白棋</h3>
+                </div>
+                <div class="player-stats">
+                    <span id="white-name" class="player-name">等待中</span>
+                </div>
+            </div>
+
+            <div id="black-player-card" class="player-card black-card">
+                <div class="player-header">
+                    <div class="player-piece black-piece"></div>
+                    <h3>黑棋</h3>
+                </div>
+                <div class="player-stats">
+                    <span id="black-name" class="player-name">等待中</span>
+                </div>
+            </div>
+
+            <div class="move-history-card">
+                <h4>走法记录</h4>
+                <div id="moves-list" class="moves-list"></div>
+            </div>
+
+            <div class="shortcuts-card">
+                <h4>操作提示</h4>
+                <p id="game-hint" class="hint-text">等待对手加入...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 胜利弹窗 -->
+    <div id="win-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-dialog">
+            <div class="modal-icon">🎉</div>
+            <h2 class="modal-title">游戏结束</h2>
+            <div id="winner-display" class="winner-show"></div>
+            <p id="win-description" class="modal-desc"></p>
+            <button id="modal-restart-btn" class="game-btn restart-btn">再来一局</button>
+        </div>
+    </div>
+
     <script src="script.js"></script>
 </body>
 </html>
