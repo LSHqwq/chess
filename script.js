@@ -91,13 +91,30 @@ const movesList = document.getElementById('moves-list');
 
 // ========== API ==========
 async function api(path, method = 'GET', body = null) {
+    const url = `${API_BASE}${path}`;
     const options = { method, headers: { 'Content-Type': 'application/json' } };
     if (authToken) options.headers['Authorization'] = `Bearer ${authToken}`;
     if (body) options.body = JSON.stringify(body);
-    const res = await fetch(`${API_BASE}${path}`, options);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || '请求失败');
-    return data;
+    
+    try {
+        const res = await fetch(url, options);
+        const text = await res.text();
+        
+        // 尝试解析JSON
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            console.error('服务器返回了非JSON响应:', text.substring(0, 200));
+            throw new Error('服务器错误，请稍后重试');
+        }
+        
+        if (!res.ok) throw new Error(data.error || '请求失败');
+        return data;
+    } catch (err) {
+        console.error('API错误:', err);
+        throw err;
+    }
 }
 
 // ========== WebSocket ==========
