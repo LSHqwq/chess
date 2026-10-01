@@ -1,5 +1,6 @@
-const API_BASE = 'https://gjxq.lshserver.dpdns.org';  // 改为 3001 端口
-const WS_BASE = 'wss://gjxq.lshserver.dpdns.org/ws';  // 改为 3001 端口
+// ========== 配置 ==========
+const API_BASE = 'https://gjxq.lshserver.dpdns.org';
+const WS_BASE = 'wss://gjxq.lshserver.dpdns.org/ws';
 let authToken = localStorage.getItem('chess_token') || '';
 let currentUser = null;
 let currentRoom = null;
@@ -88,6 +89,10 @@ const refreshRoomsBtn = document.getElementById('refresh-rooms-btn');
 const roomList = document.getElementById('room-list');
 const aiPlayBtn = document.getElementById('ai-play-btn');
 const movesList = document.getElementById('moves-list');
+const hintBtn = document.getElementById('hint-btn');
+const hintCount = document.getElementById('hint-count');
+const coachCard = document.getElementById('coach-card');
+const coachContent = document.getElementById('coach-content');
 
 // ========== API ==========
 async function api(path, method = 'GET', body = null) {
@@ -99,16 +104,13 @@ async function api(path, method = 'GET', body = null) {
     try {
         const res = await fetch(url, options);
         const text = await res.text();
-        
-        // 尝试解析JSON
         let data;
         try {
             data = JSON.parse(text);
         } catch (e) {
-            console.error('服务器返回了非JSON响应:', text.substring(0, 200));
+            console.error('非JSON响应:', text.substring(0, 200));
             throw new Error('服务器错误，请稍后重试');
         }
-        
         if (!res.ok) throw new Error(data.error || '请求失败');
         return data;
     } catch (err) {
@@ -157,15 +159,20 @@ function handleWSMessage(data) {
     
     switch (data.type) {
         case 'player_joined':
-            if (currentRoom && currentRoom.status === 'waiting') {
+            if (currentRoom) {
                 currentRoom.status = 'playing';
                 if (data.white_player) currentRoom.white_player = data.white_player;
                 if (data.black_player) currentRoom.black_player = data.black_player;
                 updatePlayerNames();
                 
                 if (game.myColor === 'white') {
-                    game.onGameStart();
+                    game.gameStarted = true;
+                    game.gameStartTime = Date.now();
+                    game.startTimer();
+                    gameStatusDiv.textContent = '游戏进行中';
+                    gameStatusDiv.className = 'status-display';
                     game.updateTurnUI();
+                    game.drawBoard();
                 }
             }
             break;
@@ -437,6 +444,7 @@ function showGameRoom() {
     if (!game) game = new ChessGame();
     game.reset(currentRoom);
     if (drawBtn) drawBtn.style.display = currentRoom.room_code === 'AI' ? 'none' : 'flex';
+    if (coachCard) coachCard.style.display = 'none';
 }
 
 function updatePlayerNames() {
@@ -495,6 +503,48 @@ drawBtn.addEventListener('click', async () => {
     }
 });
 
+// ========== AI 提示按钮 ==========
+hintBtn.addEventListener('click', async () => {
+    if (!game) return;
+    if (game.isAI) {
+        showToast('AI 提示目前仅支持联机对局');
+        return;
+    }
+    if (game.gameOver || !game.gameStarted) return;
+    if (game.myColor !== game.currentTurn) {
+        showToast('只能在你的回合请求提示');
+        return;
+    }
+    if (game.hintsRemaining <= 0) {
+        showToast('本局提示次数已用完');
+        return;
+    }
+    
+    hintBtn.disabled = true;
+    hintBtn.innerHTML = '⏳ 分析中...';
+    
+    try {
+        const data = await api(`/api/rooms/${currentRoom.room_code}/hint`, 'POST');
+        
+        game.hintsRemaining = data.hints_remaining;
+        
+        coachCard.style.display = 'block';
+        coachContent.innerHTML = `
+            <div class="coach-move">推荐：${data.move}</div>
+            <div class="coach-reason">${data.reason}</div>
+            <div class="coach-eval">局面评估：${data.evaluation}</div>
+        `;
+        
+        game.highlightHint = { fromRow: data.fromRow, fromCol: data.fromCol, toRow: data.toRow, toCol: data.toCol };
+        game.drawBoard();
+    } catch (err) {
+        showToast(err.message || '分析失败');
+    } finally {
+        hintBtn.innerHTML = `💡 提示 <span id="hint-count">(${game.hintsRemaining})</span>`;
+        game.updateHintButton();
+    }
+});
+
 // ========== 棋子动画类 ==========
 class PieceAnimation {
     constructor(fromX, fromY, toX, toY, piece, color) {
@@ -544,6 +594,8 @@ class ChessGame {
         this.animations = [];
         this.moveCount = 0;
         this.inCheck = false;
+        this.hintsRemaining = 3;
+        this.highlightHint = null;
         this.pieceSymbols = {
             'K': '♔', 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
             'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟'
@@ -589,6 +641,8 @@ class ChessGame {
         this.animations = [];
         this.moveCount = 0;
         this.inCheck = false;
+        this.hintsRemaining = 3;
+        this.highlightHint = null;
         movesList.innerHTML = '';
         moveCountEl.textContent = '0';
         gameTimeEl.textContent = '00:00';
@@ -602,6 +656,8 @@ class ChessGame {
         whiteCard.classList.remove('in-check', 'active-player');
         blackCard.classList.remove('in-check', 'active-player');
         whiteCard.classList.add('active-player');
+        if (coachCard) coachCard.style.display = 'none';
+        this.updateHintButton();
         
         if (roomData && roomData.status === 'waiting') {
             gameHint.textContent = '等待对手加入...';
@@ -663,7 +719,15 @@ class ChessGame {
         return this.pieceSymbols[piece.type] || '';
     }
 
-    // ========== 走法生成 ==========
+    updateHintButton() {
+        if (!hintBtn) return;
+        const isMyTurn = this.myColor === this.currentTurn;
+        const canHint = this.gameStarted && !this.gameOver && isMyTurn && this.hintsRemaining > 0 && !this.isAI;
+        hintBtn.disabled = !canHint;
+        const countEl = document.getElementById('hint-count');
+        if (countEl) countEl.textContent = `(${this.hintsRemaining})`;
+    }
+
     getLegalMoves(fromRow, fromCol) {
         const piece = this.board[fromRow][fromCol];
         if (!piece) return [];
@@ -753,7 +817,6 @@ class ChessGame {
         return moves;
     }
 
-    // ========== 将军检测 ==========
     findKing(color) {
         const kingType = color === 'white' ? 'K' : 'k';
         for (let r = 0; r < 8; r++) {
@@ -819,7 +882,6 @@ class ChessGame {
         return false;
     }
 
-    // ========== 兵升变 ==========
     showPromotionDialog(color) {
         return new Promise((resolve) => {
             const overlay = document.createElement('div');
@@ -867,13 +929,11 @@ class ChessGame {
         });
     }
 
-    // ========== 执行走法 ==========
     async makeMove(move, animate = true) {
         const { fromRow, fromCol, toRow, toCol } = move;
         const piece = this.board[fromRow][fromCol];
         const captured = this.board[toRow][toCol];
         
-        // 检测兵升变
         let promotionPiece = null;
         if (piece && (piece.type === 'P' || piece.type === 'p')) {
             const isPromotion = (piece.color === 'white' && toRow === 7) || (piece.color === 'black' && toRow === 0);
@@ -882,7 +942,6 @@ class ChessGame {
             }
         }
         
-        // 创建动画
         if (animate) {
             const fromX = fromCol * this.cellSize + this.cellSize / 2;
             const fromY = fromRow * this.cellSize + this.cellSize / 2;
@@ -891,7 +950,6 @@ class ChessGame {
             this.animations.push(new PieceAnimation(fromX, fromY, toX, toY, piece, piece.color));
         }
         
-        // 记录走法
         const moveRecord = {
             fromRow, fromCol, toRow, toCol,
             piece: piece,
@@ -900,7 +958,6 @@ class ChessGame {
         };
         this.moveHistory.push(moveRecord);
         
-        // 执行走法
         if (promotionPiece) {
             const newType = piece.color === 'white' ? promotionPiece : promotionPiece.toLowerCase();
             this.board[toRow][toCol] = { type: newType, color: piece.color };
@@ -914,10 +971,12 @@ class ChessGame {
         this.moveCount = this.moveHistory.length;
         moveCountEl.textContent = this.moveCount;
         
+        this.highlightHint = null;
+        if (coachCard) coachCard.style.display = 'none';
+        
         this.updateMoveHistory();
         this.updateTurnUI();
         
-        // 检测将军
         const inCheck = this.isInCheck(this.currentTurn);
         this.inCheck = inCheck;
         
@@ -970,7 +1029,6 @@ class ChessGame {
                 return;
             }
             
-            // 将军提示（只给被将军的一方显示）
             this.showCheckAlert(this.currentTurn);
         } else {
             if (this.isStalemate(this.currentTurn)) {
@@ -987,7 +1045,6 @@ class ChessGame {
                 this.drawBoard();
                 return;
             }
-            // 没有将军时清除将军状态显示
             if (this.inCheck) {
                 this.inCheck = false;
                 this.updateTurnUI();
@@ -1099,9 +1156,10 @@ class ChessGame {
                 gameStatusDiv.className = 'status-display';
             }
         }
+        
+        this.updateHintButton();
     }
 
-    // ========== 绘制棋盘 ==========
     drawBoard() {
         const ctx = this.ctx;
         const size = 600;
@@ -1196,6 +1254,34 @@ class ChessGame {
             }
         }
         
+        // 绘制 AI 提示高亮
+        if (this.highlightHint) {
+            const { fromRow, fromCol, toRow, toCol } = this.highlightHint;
+            const fromX = fromCol * cell + cell / 2;
+            const fromY = fromRow * cell + cell / 2;
+            const toX = toCol * cell + cell / 2;
+            const toY = toRow * cell + cell / 2;
+            
+            ctx.beginPath();
+            ctx.arc(fromX, fromY, cell / 2 - 6, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(128, 90, 213, 0.9)';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.arc(toX, toY, cell / 2 - 6, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(128, 90, 213, 0.9)';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(fromX, fromY);
+            ctx.lineTo(toX, toY);
+            ctx.strokeStyle = 'rgba(128, 90, 213, 0.5)';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+        
         for (const anim of this.animations) {
             const pos = anim.getCurrentPosition();
             const x = pos.x;
@@ -1235,7 +1321,6 @@ class ChessGame {
         }
     }
 
-    // ========== 点击处理 ==========
     handleClick(e) {
         if (this.gameOver || !this.gameStarted || this.myColor !== this.currentTurn) return;
         
@@ -1330,6 +1415,9 @@ class ChessGame {
             this.lastMove = { fromRow: last.fromRow, fromCol: last.fromCol, toRow: last.toRow, toCol: last.toCol };
         }
         
+        this.highlightHint = null;
+        if (coachCard) coachCard.style.display = 'none';
+        
         this.updateMoveHistory();
         
         if (data.game_over) {
@@ -1384,7 +1472,6 @@ class ChessGame {
         this.drawBoard();
     }
 
-    // ========== AI ==========
     aiMove() {
         if (this.gameOver || !this.isAI) return;
         

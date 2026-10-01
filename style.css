@@ -405,6 +405,59 @@ body {
     font-weight: 600;
 }
 
+/* ========== AI 教练卡片 ========== */
+.coach-card {
+    background: linear-gradient(135deg, rgba(128, 90, 213, 0.15), rgba(107, 70, 193, 0.15));
+    border: 1px solid rgba(128, 90, 213, 0.3);
+    border-radius: var(--radius);
+    padding: 12px;
+    box-shadow: var(--shadow);
+    animation: fadeIn 0.3s ease;
+}
+
+.coach-card h4 {
+    font-size: 11px;
+    color: #b794f4;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.coach-content {
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.6;
+}
+
+.coach-move {
+    font-size: 18px;
+    font-weight: 700;
+    color: #b794f4;
+    margin-bottom: 6px;
+}
+
+.coach-reason {
+    color: var(--text-dim);
+    margin-bottom: 6px;
+}
+
+.coach-eval {
+    font-size: 11px;
+    color: var(--text-dim);
+    padding-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#hint-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#hint-btn:disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
 /* ========== 弹窗 ========== */
 .modal-overlay {
     position: fixed;

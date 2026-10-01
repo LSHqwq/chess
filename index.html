@@ -88,9 +88,18 @@
             </div>
 
             <div class="action-card">
-                <button id="restart-btn" class="game-btn restart-btn">新游戏</button>
-                <button id="draw-btn" class="game-btn undo-btn">求和</button>
-                <button id="leave-room-btn" class="game-btn undo-btn" style="background:#e53e3e;">离开房间</button>
+                <button id="hint-btn" class="game-btn" style="background: linear-gradient(135deg, #805ad5, #6b46c1);">
+                    💡 提示 <span id="hint-count">(3)</span>
+                </button>
+                <button id="restart-btn" class="game-btn restart-btn">
+                    <span>新游戏</span>
+                </button>
+                <button id="draw-btn" class="game-btn undo-btn">
+                    <span>求和</span>
+                </button>
+                <button id="leave-room-btn" class="game-btn undo-btn" style="background:#e53e3e;">
+                    <span>离开房间</span>
+                </button>
             </div>
 
             <div id="game-status" class="status-display">游戏进行中</div>
@@ -123,6 +132,11 @@
                 </div>
             </div>
 
+            <div class="coach-card" id="coach-card" style="display: none;">
+                <h4>🎓 教练建议</h4>
+                <div id="coach-content" class="coach-content"></div>
+            </div>
+
             <div class="move-history-card">
                 <h4>走法记录</h4>
                 <div id="moves-list" class="moves-list"></div>
@@ -143,16 +157,6 @@
             <div id="winner-display" class="winner-show"></div>
             <p id="win-description" class="modal-desc"></p>
             <button id="modal-restart-btn" class="game-btn restart-btn">再来一局</button>
-        </div>
-    </div>
-
-    <!-- 将军提示弹窗 -->
-    <div id="check-modal" class="modal-overlay" style="display: none;">
-        <div class="modal-dialog" style="border-color: #f56565;">
-            <div class="modal-icon">⚡</div>
-            <h2 class="modal-title" style="color: #f56565;">将军！</h2>
-            <p id="check-message" class="modal-desc">你的王被将军了，必须立刻解围！</p>
-            <button id="check-modal-btn" class="game-btn restart-btn" style="background: #f56565;">知道了</button>
         </div>
     </div>
 
