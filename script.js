@@ -339,10 +339,9 @@ async function quickJoin(code) {
             white_player: data.white_player,
             black_player: data.black_player
         };
-        // 先创建 game 并设置 myColor，再 showGameRoom
         if (!game) game = new ChessGame();
         game.isAI = false;
-        game.myColor = 'black';   // 加入者执黑
+        game.myColor = 'black';
         showGameRoom();
         game.onGameStart();
         connectWebSocket(currentRoom.room_code);
@@ -377,10 +376,9 @@ createRoomBtn.addEventListener('click', async () => {
             white_player: currentUser ? currentUser.username : '未知',
             black_player: null
         };
-        // 先创建 game 并设置 myColor
         if (!game) game = new ChessGame();
         game.isAI = false;
-        game.myColor = 'white';   // 创建者执白
+        game.myColor = 'white';
         showGameRoom();
         connectWebSocket(currentRoom.room_code);
     } catch (err) {
@@ -399,10 +397,9 @@ joinRoomBtn.addEventListener('click', async () => {
             white_player: data.white_player,
             black_player: data.black_player
         };
-        // 先创建 game 并设置 myColor
         if (!game) game = new ChessGame();
         game.isAI = false;
-        game.myColor = 'black';   // 加入者执黑
+        game.myColor = 'black';
         showGameRoom();
         game.onGameStart();
         connectWebSocket(currentRoom.room_code);
@@ -449,7 +446,6 @@ function showGameRoom() {
     roomCodeDisplay.textContent = currentRoom.room_code === 'AI' ? '人机对战' : '房间: ' + currentRoom.room_code;
     updatePlayerNames();
     if (!game) game = new ChessGame();
-    console.log('showGameRoom - myColor:', game.myColor, 'isAI:', game.isAI);
     game.reset(currentRoom);
     if (drawBtn) drawBtn.style.display = currentRoom.room_code === 'AI' ? 'none' : 'flex';
     if (coachCard) coachCard.style.display = 'none';
@@ -553,17 +549,18 @@ hintBtn.addEventListener('click', async () => {
     }
 });
 
-// ========== 棋子动画类 ==========
+// ========== 棋子滑动动画类 ==========
 class PieceAnimation {
-    constructor(fromX, fromY, toX, toY, piece, color) {
-        this.fromX = fromX;
-        this.fromY = fromY;
-        this.toX = toX;
-        this.toY = toY;
+    constructor(fromRow, fromCol, toRow, toCol, piece, color, cellSize) {
+        this.fromRow = fromRow;
+        this.fromCol = fromCol;
+        this.toRow = toRow;
+        this.toCol = toCol;
         this.piece = piece;
         this.color = color;
+        this.cellSize = cellSize;
         this.progress = 0;
-        this.duration = 350;
+        this.duration = 300;
         this.startTime = Date.now();
         this.active = true;
     }
@@ -571,16 +568,22 @@ class PieceAnimation {
     update() {
         const elapsed = Date.now() - this.startTime;
         this.progress = Math.min(elapsed / this.duration, 1);
-        this.progress = 1 - Math.pow(1 - this.progress, 3);
+        // easeOutCubic 缓动，末尾慢下来更自然
+        this.eased = 1 - Math.pow(1 - this.progress, 3);
         if (this.progress >= 1) {
             this.active = false;
         }
     }
     
     getCurrentPosition() {
-        const x = this.fromX + (this.toX - this.fromX) * this.progress;
-        const y = this.fromY + (this.toY - this.fromY) * this.progress;
-        const scale = 1 + 0.1 * Math.sin(this.progress * Math.PI);
+        const fromX = this.fromCol * this.cellSize + this.cellSize / 2;
+        const fromY = this.fromRow * this.cellSize + this.cellSize / 2;
+        const toX = this.toCol * this.cellSize + this.cellSize / 2;
+        const toY = this.toRow * this.cellSize + this.cellSize / 2;
+        const x = fromX + (toX - fromX) * this.eased;
+        const y = fromY + (toY - fromY) * this.eased;
+        // 中途轻微放大，视觉更生动
+        const scale = 1 + 0.15 * Math.sin(this.progress * Math.PI);
         return { x, y, scale };
     }
 }
@@ -728,13 +731,12 @@ class ChessGame {
     }
 
     updateHintButton() {
-    if (!hintBtn) return;
-    const isMyTurn = this.myColor === this.currentTurn;
-    const canHint = this.gameStarted && !this.gameOver && isMyTurn && this.hintsRemaining > 0 && !this.isAI;
-    hintBtn.disabled = !canHint;
-    // 重新获取 count 元素，因为 innerHTML 可能被重建过
-    const countEl = document.getElementById('hint-count');
-    if (countEl) countEl.textContent = `(${this.hintsRemaining})`;
+        if (!hintBtn) return;
+        const isMyTurn = this.myColor === this.currentTurn;
+        const canHint = this.gameStarted && !this.gameOver && isMyTurn && this.hintsRemaining > 0 && !this.isAI;
+        hintBtn.disabled = !canHint;
+        const countEl = document.getElementById('hint-count');
+        if (countEl) countEl.textContent = `(${this.hintsRemaining})`;
     }
 
     getLegalMoves(fromRow, fromCol) {
@@ -938,6 +940,33 @@ class ChessGame {
         });
     }
 
+    // 添加动画（不阻塞棋盘数据更新）
+    addAnimation(fromRow, fromCol, toRow, toCol, piece, color) {
+        const anim = new PieceAnimation(fromRow, fromCol, toRow, toCol, piece, color, this.cellSize);
+        this.animations.push(anim);
+        // 如果动画循环没启动，启动它
+        if (!this.animationId) {
+            this.animationLoop();
+        }
+    }
+
+    animationLoop() {
+        let hasActive = false;
+        for (const anim of this.animations) {
+            if (anim.active) {
+                anim.update();
+                hasActive = true;
+            }
+        }
+        this.animations = this.animations.filter(a => a.active);
+        this.drawBoard();
+        if (hasActive) {
+            this.animationId = requestAnimationFrame(() => this.animationLoop());
+        } else {
+            this.animationId = null;
+        }
+    }
+
     async makeMove(move, animate = true) {
         const { fromRow, fromCol, toRow, toCol } = move;
         const piece = this.board[fromRow][fromCol];
@@ -951,14 +980,12 @@ class ChessGame {
             }
         }
         
-        if (animate) {
-            const fromX = fromCol * this.cellSize + this.cellSize / 2;
-            const fromY = fromRow * this.cellSize + this.cellSize / 2;
-            const toX = toCol * this.cellSize + this.cellSize / 2;
-            const toY = toRow * this.cellSize + this.cellSize / 2;
-            this.animations.push(new PieceAnimation(fromX, fromY, toX, toY, piece, piece.color));
+        // 先添加动画（用当前棋盘状态，起点还有棋子）
+        if (animate && piece) {
+            this.addAnimation(fromRow, fromCol, toRow, toCol, piece, piece.color);
         }
         
+        // 立即更新棋盘数据
         const moveRecord = {
             fromRow, fromCol, toRow, toCol,
             piece: piece,
@@ -1226,8 +1253,19 @@ class ChessGame {
             }
         }
         
+        // 绘制静态棋子（跳过正在被动画的终点格）
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
+                // 检查是否有动画正在使用这个格子作为终点
+                let isAnimatingTo = false;
+                for (const anim of this.animations) {
+                    if (anim.active && anim.toRow === row && anim.toCol === col) {
+                        isAnimatingTo = true;
+                        break;
+                    }
+                }
+                if (isAnimatingTo) continue;
+                
                 const piece = this.board[row][col];
                 if (piece) {
                     const x = col * cell + cell / 2;
@@ -1291,7 +1329,9 @@ class ChessGame {
             ctx.stroke();
         }
         
+        // 绘制动画棋子（最上层）
         for (const anim of this.animations) {
+            if (!anim.active) continue;
             const pos = anim.getCurrentPosition();
             const x = pos.x;
             const y = pos.y;
@@ -1307,26 +1347,15 @@ class ChessGame {
             ctx.shadowBlur = 20;
             ctx.fillStyle = anim.color === 'white' ? '#ffffff' : '#1a1a1a';
             ctx.fillText(this.getPieceSymbol(anim.piece), 0, 0);
+            
+            if (anim.color === 'white') {
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+                ctx.lineWidth = 1;
+                ctx.strokeText(this.getPieceSymbol(anim.piece), 0, 0);
+            }
             ctx.shadowBlur = 0;
             ctx.restore();
-        }
-        
-        let hasActiveAnimation = false;
-        for (const anim of this.animations) {
-            if (anim.active) {
-                hasActiveAnimation = true;
-                anim.update();
-            }
-        }
-        this.animations = this.animations.filter(a => a.active);
-        
-        if (hasActiveAnimation) {
-            this.animationId = requestAnimationFrame(() => this.drawBoard());
-        } else {
-            if (this.animationId) {
-                cancelAnimationFrame(this.animationId);
-                this.animationId = null;
-            }
         }
     }
 
@@ -1413,9 +1442,27 @@ class ChessGame {
     }
 
     syncFromServer(data) {
-        this.board = data.board_state;
+        const oldBoard = this.board;
+        const newBoard = data.board_state;
+        
+        // 检测对手走的那一步（用于动画）
+        const oldHistoryLen = this.moveHistory.length;
+        const newHistory = data.move_history || [];
+        if (newHistory.length > oldHistoryLen) {
+            const lastMove = newHistory[newHistory.length - 1];
+            if (lastMove && lastMove.piece) {
+                // 播放对手的走棋动画
+                this.addAnimation(
+                    lastMove.fromRow, lastMove.fromCol,
+                    lastMove.toRow, lastMove.toCol,
+                    lastMove.piece, lastMove.piece.color
+                );
+            }
+        }
+        
+        this.board = newBoard;
         this.currentTurn = data.current_turn;
-        this.moveHistory = data.move_history || [];
+        this.moveHistory = newHistory;
         this.moveCount = this.moveHistory.length;
         moveCountEl.textContent = this.moveCount;
         

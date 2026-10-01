@@ -25,28 +25,32 @@ body {
     min-height: 100vh;
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
     color: var(--text);
     user-select: none;
     -webkit-user-select: none;
+    padding: 10px 0;
+    overflow-x: hidden;
 }
 
 .container {
     display: flex;
-    gap: 18px;
-    padding: 18px;
-    max-width: 1100px;
+    gap: 14px;
+    padding: 10px 16px;
+    max-width: 1080px;
     width: 100%;
-    align-items: stretch;
-    min-height: 600px;
+    align-items: flex-start;
+    min-height: auto;
 }
 
-/* ========== 面板样式 ========== */
+/* ========== 左侧面板 ========== */
 .left-panel {
     flex: 0 0 180px;
     display: flex;
     flex-direction: column;
     gap: 10px;
+    max-height: calc(100vh - 30px);
+    overflow-y: auto;
 }
 
 .game-logo {
@@ -247,16 +251,16 @@ body {
 
 /* ========== 棋盘 ========== */
 .board-panel {
-    flex: 1;
+    flex: 0 0 auto;
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
 }
 
 .board-wrapper {
     position: relative;
     background: var(--card-bg);
-    padding: 12px;
+    padding: 10px;
     border-radius: var(--radius);
     box-shadow: var(--shadow);
 }
@@ -265,8 +269,9 @@ body {
     display: block;
     cursor: pointer;
     border-radius: 4px;
-    width: 600px;
-    height: 600px;
+    width: min(600px, calc(100vh - 100px), calc(100vw - 480px));
+    height: min(600px, calc(100vh - 100px), calc(100vw - 480px));
+    max-width: 100%;
 }
 
 /* ========== 右侧面板 ========== */
@@ -275,6 +280,8 @@ body {
     display: flex;
     flex-direction: column;
     gap: 10px;
+    max-height: calc(100vh - 30px);
+    overflow-y: auto;
 }
 
 .player-card {
@@ -690,6 +697,8 @@ body {
         max-width: 500px;
         flex-direction: row;
         flex-wrap: wrap;
+        max-height: none;
+        overflow-y: visible;
     }
 
     .left-panel {
@@ -709,7 +718,7 @@ body {
     }
     
     #board {
-        width: 100%;
+        width: min(100%, calc(100vh - 120px));
         height: auto;
         aspect-ratio: 1;
     }
