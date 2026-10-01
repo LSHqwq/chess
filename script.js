@@ -339,9 +339,11 @@ async function quickJoin(code) {
             white_player: data.white_player,
             black_player: data.black_player
         };
-        showGameRoom();
+        // 先创建 game 并设置 myColor，再 showGameRoom
+        if (!game) game = new ChessGame();
         game.isAI = false;
-        game.myColor = 'black';
+        game.myColor = 'black';   // 加入者执黑
+        showGameRoom();
         game.onGameStart();
         connectWebSocket(currentRoom.room_code);
     } catch (err) {
@@ -359,9 +361,10 @@ aiPlayBtn.addEventListener('click', () => {
         white_player: currentUser ? currentUser.username : '玩家',
         black_player: '电脑'
     };
-    showGameRoom();
+    if (!game) game = new ChessGame();
     game.isAI = true;
     game.myColor = 'white';
+    showGameRoom();
     game.onGameStart();
 });
 
@@ -374,9 +377,11 @@ createRoomBtn.addEventListener('click', async () => {
             white_player: currentUser ? currentUser.username : '未知',
             black_player: null
         };
-        showGameRoom();
+        // 先创建 game 并设置 myColor
+        if (!game) game = new ChessGame();
         game.isAI = false;
-        game.myColor = 'white';
+        game.myColor = 'white';   // 创建者执白
+        showGameRoom();
         connectWebSocket(currentRoom.room_code);
     } catch (err) {
         lobbyError.textContent = err.message;
@@ -394,9 +399,11 @@ joinRoomBtn.addEventListener('click', async () => {
             white_player: data.white_player,
             black_player: data.black_player
         };
-        showGameRoom();
+        // 先创建 game 并设置 myColor
+        if (!game) game = new ChessGame();
         game.isAI = false;
-        game.myColor = 'black';
+        game.myColor = 'black';   // 加入者执黑
+        showGameRoom();
         game.onGameStart();
         connectWebSocket(currentRoom.room_code);
     } catch (err) {
@@ -442,6 +449,7 @@ function showGameRoom() {
     roomCodeDisplay.textContent = currentRoom.room_code === 'AI' ? '人机对战' : '房间: ' + currentRoom.room_code;
     updatePlayerNames();
     if (!game) game = new ChessGame();
+    console.log('showGameRoom - myColor:', game.myColor, 'isAI:', game.isAI);
     game.reset(currentRoom);
     if (drawBtn) drawBtn.style.display = currentRoom.room_code === 'AI' ? 'none' : 'flex';
     if (coachCard) coachCard.style.display = 'none';
@@ -720,12 +728,13 @@ class ChessGame {
     }
 
     updateHintButton() {
-        if (!hintBtn) return;
-        const isMyTurn = this.myColor === this.currentTurn;
-        const canHint = this.gameStarted && !this.gameOver && isMyTurn && this.hintsRemaining > 0 && !this.isAI;
-        hintBtn.disabled = !canHint;
-        const countEl = document.getElementById('hint-count');
-        if (countEl) countEl.textContent = `(${this.hintsRemaining})`;
+    if (!hintBtn) return;
+    const isMyTurn = this.myColor === this.currentTurn;
+    const canHint = this.gameStarted && !this.gameOver && isMyTurn && this.hintsRemaining > 0 && !this.isAI;
+    hintBtn.disabled = !canHint;
+    // 重新获取 count 元素，因为 innerHTML 可能被重建过
+    const countEl = document.getElementById('hint-count');
+    if (countEl) countEl.textContent = `(${this.hintsRemaining})`;
     }
 
     getLegalMoves(fromRow, fromCol) {
