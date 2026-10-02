@@ -72,6 +72,7 @@ const gameHint = document.getElementById('game-hint');
 const leaveRoomBtn = document.getElementById('leave-room-btn');
 const restartBtn = document.getElementById('restart-btn');
 const drawBtn = document.getElementById('draw-btn');
+const undoBtn = document.getElementById('undo-btn');
 const winModal = document.getElementById('win-modal');
 const resultIcon = document.getElementById('result-icon');
 const resultTitle = document.getElementById('result-title');
@@ -217,6 +218,38 @@ function handleWSMessage(data) {
         case 'draw_rejected':
             drawModalShown = false;
             gameHint.textContent = '对方拒绝了求和';
+            break;
+            
+        case 'undo_offer':
+            if (!game.gameOver) {
+                showUndoOffer(data.from, currentRoom.room_code);
+            }
+            break;
+            
+        case 'undo_agreed':
+            winModal.style.display = 'none';
+            game.board = data.board_state;
+            game.currentTurn = data.current_turn;
+            game.moveHistory = data.move_history || [];
+            game.moveCount = game.moveHistory.length;
+            moveCountEl.textContent = game.moveCount;
+            if (game.moveHistory.length > 0) {
+                const last = game.moveHistory[game.moveHistory.length - 1];
+                game.lastMove = { fromRow: last.fromRow, fromCol: last.fromCol, toRow: last.toRow, toCol: last.toCol };
+            } else {
+                game.lastMove = null;
+            }
+            game.updateMoveHistory();
+            game.inCheck = game.isInCheck(game.currentTurn);
+            game.updateTurnUI();
+            game.drawBoard();
+            gameHint.textContent = '悔棋成功';
+            showToast('对方同意了悔棋');
+            break;
+            
+        case 'undo_rejected':
+            gameHint.textContent = '对方拒绝了悔棋';
+            showToast('对方拒绝了悔棋');
             break;
             
         case 'player_left':
@@ -444,6 +477,35 @@ function showDrawOffer(offerName, roomCode) {
     });
 }
 
+// ========== 悔棋弹窗 ==========
+function showUndoOffer(offerName, roomCode) {
+    showModal({
+        title: '悔棋请求',
+        message: `${offerName} 请求悔棋，是否同意？`,
+        buttons: [
+            {
+                text: '同意',
+                bg: '#48bb78',
+                onClick: async () => {
+                    try {
+                        await api(`/api/rooms/${roomCode}/undo_respond`, 'POST', { accept: true });
+                    } catch (err) {}
+                }
+            },
+            {
+                text: '拒绝',
+                bg: '#f56565',
+                onClick: async () => {
+                    try {
+                        await api(`/api/rooms/${roomCode}/undo_respond`, 'POST', { accept: false });
+                    } catch (err) {}
+                }
+            }
+        ],
+        autoClose: 30000
+    });
+}
+
 // ========== 游戏界面 ==========
 function showGameRoom() {
     lobby.style.display = 'none';
@@ -454,6 +516,22 @@ function showGameRoom() {
     game.reset(currentRoom);
     if (drawBtn) drawBtn.style.display = currentRoom.room_code === 'AI' ? 'none' : 'flex';
     if (coachCard) coachCard.style.display = 'none';
+    
+    // 只有房主（执白）才能看到"新游戏"按钮
+    if (restartBtn) {
+        if (currentRoom.room_code === 'AI') {
+            restartBtn.style.display = 'flex';
+        } else if (game.myColor === 'white') {
+            restartBtn.style.display = 'flex';
+        } else {
+            restartBtn.style.display = 'none';
+        }
+    }
+    
+    // 悔棋按钮只在联机对局中显示
+    if (undoBtn) {
+        undoBtn.style.display = currentRoom.room_code === 'AI' ? 'none' : 'flex';
+    }
 }
 
 function updatePlayerNames() {
@@ -508,6 +586,20 @@ drawBtn.addEventListener('click', async () => {
     try {
         await api(`/api/rooms/${currentRoom.room_code}/draw_offer`, 'POST');
         gameHint.textContent = '已发送求和请求，等待对方回应...';
+    } catch (err) {
+        showToast(err.message);
+    }
+});
+
+undoBtn.addEventListener('click', async () => {
+    if (!currentRoom || game.isAI || game.gameOver) return;
+    if (game.moveHistory.length === 0) {
+        showToast('还没有走过棋，无法悔棋');
+        return;
+    }
+    try {
+        await api(`/api/rooms/${currentRoom.room_code}/undo_offer`, 'POST');
+        gameHint.textContent = '已发送悔棋请求，等待对方回应...';
     } catch (err) {
         showToast(err.message);
     }
@@ -1236,11 +1328,9 @@ class ChessGame {
         
         ctx.clearRect(0, 0, canvasSize, canvasSize);
         
-        // 背景（棋盘外围）
         ctx.fillStyle = '#16213e';
         ctx.fillRect(0, 0, canvasSize, canvasSize);
         
-        // 绘制棋盘格子
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
                 const isLight = (row + col) % 2 === 0;
@@ -1257,12 +1347,10 @@ class ChessGame {
             }
         }
         
-        // 棋盘外框
         ctx.strokeStyle = 'rgba(58, 42, 10, 0.6)';
         ctx.lineWidth = 2;
         ctx.strokeRect(pad, pad, boardSize, boardSize);
         
-        // ========== 绘制坐标 ==========
         ctx.font = 'bold 13px "Segoe UI", Arial, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -1279,14 +1367,12 @@ class ChessGame {
             ctx.fillText(rank.toString(), pad / 2, pad + row * cell + cell / 2);
         }
         
-        // 选中格子高亮
         if (this.selectedSquare) {
             const { row, col } = this.selectedSquare;
             ctx.fillStyle = 'rgba(255, 255, 0, 0.3)';
             ctx.fillRect(pad + col * cell, pad + row * cell, cell, cell);
         }
         
-        // 显示合法走法
         if (this.selectedSquare) {
             const { row, col } = this.selectedSquare;
             const moves = this.getLegalMoves(row, col);
@@ -1315,7 +1401,6 @@ class ChessGame {
             }
         }
         
-        // 绘制静态棋子（跳过正在被动画的终点格）
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
                 let isAnimatingTo = false;
@@ -1362,7 +1447,6 @@ class ChessGame {
             }
         }
         
-        // 绘制 AI 提示高亮
         if (this.highlightHint) {
             const { fromRow, fromCol, toRow, toCol } = this.highlightHint;
             const fromX = pad + fromCol * cell + cell / 2;
@@ -1390,7 +1474,6 @@ class ChessGame {
             ctx.stroke();
         }
         
-        // 绘制动画棋子（最上层）
         for (const anim of this.animations) {
             if (!anim.active) continue;
             const pos = anim.getCurrentPosition();
