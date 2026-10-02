@@ -255,7 +255,7 @@ function handleWSMessage(data) {
         case 'player_left':
             showModal({ 
                 title: '对方离开', 
-                message: '对方离开了房间', 
+                message: '有人离开房间', 
                 buttons: [{ 
                     text: '返回大厅', 
                     bg: '#667eea', 
