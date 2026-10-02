@@ -244,12 +244,12 @@ function handleWSMessage(data) {
             game.updateTurnUI();
             game.drawBoard();
             gameHint.textContent = '悔棋成功';
-            showToast('对方同意了悔棋');
+            showToast('悔棋成功');
             break;
             
         case 'undo_rejected':
             gameHint.textContent = '对方拒绝了悔棋';
-            showToast('对方拒绝了悔棋');
+            showToast('拒绝悔棋');
             break;
             
         case 'player_left':
