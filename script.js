@@ -7,6 +7,7 @@ let currentRoom = null;
 let game = null;
 let ws = null;
 let drawModalShown = false;
+let undoModalShown = false;
 
 // ========== 页内弹窗函数 ==========
 function showModal(options) {
@@ -221,7 +222,8 @@ function handleWSMessage(data) {
             break;
             
         case 'undo_offer':
-            if (!game.gameOver) {
+            if (!game.gameOver && !undoModalShown) {
+                undoModalShown = true;
                 showUndoOffer(data.from, currentRoom.room_code);
             }
             break;
@@ -249,13 +251,13 @@ function handleWSMessage(data) {
             
         case 'undo_rejected':
             gameHint.textContent = '对方拒绝了悔棋';
-            showToast('拒绝悔棋');
+            showToast('对方拒绝了悔棋');
             break;
             
         case 'player_left':
             showModal({ 
                 title: '对方离开', 
-                message: '有人离开房间', 
+                message: '对方离开了房间', 
                 buttons: [{ 
                     text: '返回大厅', 
                     bg: '#667eea', 
@@ -473,8 +475,7 @@ function showDrawOffer(offerName, roomCode) {
                 }
             }
         ],
-        autoClose: 30000
-    });
+        autoClose: 30000    });
 }
 
 // ========== 悔棋弹窗 ==========
@@ -487,6 +488,7 @@ function showUndoOffer(offerName, roomCode) {
                 text: '同意',
                 bg: '#48bb78',
                 onClick: async () => {
+                    undoModalShown = false;
                     try {
                         await api(`/api/rooms/${roomCode}/undo_respond`, 'POST', { accept: true });
                     } catch (err) {}
@@ -496,6 +498,7 @@ function showUndoOffer(offerName, roomCode) {
                 text: '拒绝',
                 bg: '#f56565',
                 onClick: async () => {
+                    undoModalShown = false;
                     try {
                         await api(`/api/rooms/${roomCode}/undo_respond`, 'POST', { accept: false });
                     } catch (err) {}
@@ -517,7 +520,6 @@ function showGameRoom() {
     if (drawBtn) drawBtn.style.display = currentRoom.room_code === 'AI' ? 'none' : 'flex';
     if (coachCard) coachCard.style.display = 'none';
     
-    // 只有房主（执白）才能看到"新游戏"按钮
     if (restartBtn) {
         if (currentRoom.room_code === 'AI') {
             restartBtn.style.display = 'flex';
@@ -528,7 +530,6 @@ function showGameRoom() {
         }
     }
     
-    // 悔棋按钮只在联机对局中显示
     if (undoBtn) {
         undoBtn.style.display = currentRoom.room_code === 'AI' ? 'none' : 'flex';
     }
